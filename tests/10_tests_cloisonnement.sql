@@ -53,9 +53,11 @@ begin
 end $$;
 
 -- Ouvre une session au nom d'une personne (comme le ferait Supabase).
-create function tests.session(utilisateur uuid)
+-- niveau : 'aal1' (email seul) ou 'aal2' (email + application d'authentification).
+create function tests.session(utilisateur uuid, niveau text default 'aal1')
 returns void language sql as $$
-  select set_config('request.jwt.claims', json_build_object('sub', utilisateur, 'role', 'authenticated')::text, true);
+  select set_config('request.jwt.claims',
+    json_build_object('sub', utilisateur, 'role', 'authenticated', 'aal', niveau)::text, true);
 $$;
 
 grant execute on all functions in schema tests to anon, authenticated;
@@ -208,9 +210,23 @@ rollback;
 \echo '\n== 5. Administratrice'
 
 begin;
-select tests.session('11111111-1111-4111-8111-111111111111');
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal1');
 set local role authenticated;
-select tests.verifier((select count(*) from public.apprenants) = 20, 'voit les 20 apprenants');
+select tests.verifier((select count(*) from public.apprenants) = 0,
+  'sans double authentification, l''administratrice ne voit AUCUN apprenant');
+select tests.verifier((select count(*) from public.organismes_suivi_commercial) = 0,
+  'sans double authentification, pas d''accès au suivi commercial');
+select tests.verifier((select count(*) from public.profils) = 1,
+  'sans double authentification, elle voit seulement son profil (pour être guidée vers le second facteur)');
+select tests.doit_etre_refuse(
+  $$insert into public.organismes (nom) values ('Intrus')$$,
+  'sans double authentification, elle ne peut rien créer');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+select tests.verifier((select count(*) from public.apprenants) = 20, 'avec double authentification : voit les 20 apprenants');
 select tests.verifier((select count(*) from public.notes_internes) = 3, 'voit les 3 notes internes');
 select tests.verifier((select count(*) from public.organismes_suivi_commercial) = 5, 'voit son suivi commercial (5 organismes)');
 select tests.verifier(

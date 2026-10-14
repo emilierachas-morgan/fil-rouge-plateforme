@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Fil Rouge Apprenants</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Instrument+Serif&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="bandeau">
+    <div class="bandeau-interieur">
+      <p class="marque"><span class="marque-fil" aria-hidden="true"></span>Fil Rouge <span class="marque-sous">Apprenants</span></p>
+      <div id="zone-compte" class="zone-compte" hidden>
+        <span id="compte-libelle" class="compte-libelle"></span>
+        <button id="bouton-deconnexion" class="bouton-lien" type="button">Se déconnecter</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="contenu" class="contenu" aria-live="polite">
+    <p class="chargement">Chargement…</p>
+  </main>
+
+  <footer class="pied">
+    <p>Fil Rouge Apprenants · accompagnement anti-décrochage à distance · données hébergées en France</p>
+  </footer>
+
+  <!-- Bibliothèque officielle Supabase, version figée. -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

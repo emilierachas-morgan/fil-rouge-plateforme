@@ -1,0 +1,10 @@
+# En-têtes de sécurité appliqués par l'hébergeur (format Netlify / Cloudflare Pages).
+# La page ne peut charger du code que depuis elle-même et la bibliothèque Supabase,
+# et ne peut parler qu'au projet Supabase de Fil Rouge Apprenants.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://cafcevtehuywovvsllvp.supabase.co wss://cafcevtehuywovvsllvp.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  X-Robots-Tag: noindex, nofollow

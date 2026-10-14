@@ -38,6 +38,17 @@ $$;
 
 grant execute on function auth.uid() to anon, authenticated, service_role;
 
+-- Contenu complet du jeton de connexion (dont le niveau aal1 / aal2).
+create function auth.jwt()
+returns jsonb
+language sql
+stable
+as $$
+  select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb
+$$;
+
+grant execute on function auth.jwt() to anon, authenticated, service_role;
+
 -- Supabase donne par défaut des droits à anon et authenticated sur les
 -- nouvelles tables : on reproduit ce comportement pour tester qu'on les retire.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
