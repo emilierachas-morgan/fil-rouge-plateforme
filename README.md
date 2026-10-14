@@ -70,7 +70,7 @@ Le script crée une base jetable, charge la simulation Supabase, les deux migrat
 
 Pas d'outil de compilation : trois fichiers que n'importe quel hébergeur de sites statiques sert tels quels.
 
-- **Connexion** par code à 6 chiffres reçu par email, sans mot de passe. Personne ne peut créer de compte seul : les comptes sont créés par l'administratrice.
+- **Connexion** par lien reçu par email (ou code à 6 chiffres une fois l'envoi d'emails personnalisé en place, étape 7), sans mot de passe. Personne ne peut créer de compte seul : les comptes sont créés par l'administratrice.
 - **Double authentification** obligatoire pour l'administratrice (application d'authentification sur téléphone). Sans elle, la base ne lui donne aucune donnée (règle testée).
 - **Accueil selon le rôle** : tableau de bord pour l'administratrice, liste de ses apprenants pour un client, liste des apprenants confiés pour une appelante.
 

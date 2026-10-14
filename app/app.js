@@ -36,9 +36,30 @@
     return;
   }
 
+  // Un lien de connexion expiré ou déjà utilisé revient avec une erreur dans l'adresse.
+  const erreurLien = /(^|[#&?])error=/.test(window.location.hash + window.location.search)
+    ? "Ce lien de connexion a expiré ou a déjà servi. Demandez-en un nouveau ci-dessous."
+    : null;
+  if (erreurLien) history.replaceState(null, "", window.location.pathname);
+
+  // detectSessionInUrl : ouvre la session quand on arrive par le lien reçu par email.
   const sb = window.supabase.createClient(config.supabaseUrl, config.supabaseCle, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
   });
+
+  // Adresse où renvoie le lien de l'email : la page elle-même, une fois en ligne.
+  function adresseRetour() {
+    return /^https?:$/.test(window.location.protocol)
+      ? window.location.origin + window.location.pathname
+      : undefined;
+  }
+
+  function demanderAcces(email) {
+    return sb.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false, emailRedirectTo: adresseRetour() },
+    });
+  }
 
   const LIBELLES_ROLE = {
     admin: "Administratrice",
@@ -146,7 +167,7 @@
 
     if (!session) {
       zoneCompte.hidden = true;
-      return ecranEmail();
+      return ecranEmail(erreurLien);
     }
 
     const { data: profil, error } = await sb
@@ -190,7 +211,7 @@
       id: "champ-email", type: "email", name: "email", autocomplete: "email",
       required: true, inputmode: "email", value: etat.email, placeholder: "prenom@organisme.fr",
     });
-    const bouton = h("button", { class: "bouton", type: "submit" }, "Recevoir mon code");
+    const bouton = h("button", { class: "bouton", type: "submit" }, "Recevoir mon lien de connexion");
 
     const formulaire = h("form", { novalidate: true },
       h("label", { for: "champ-email" }, "Adresse email", champ),
@@ -206,7 +227,7 @@
       }
       signaler(zone);
       occupe(bouton, true, "Envoi en cours…");
-      const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false } });
+      const { error } = await demanderAcces(email);
       occupe(bouton, false);
 
       // Une adresse sans accès reçoit le même écran qu'une adresse autorisée :
@@ -224,7 +245,7 @@
         h("div", {},
           h("p", { class: "surtitre" }, "Connexion"),
           h("h1", {}, "Vos apprenants jusqu'au bout"),
-          h("p", { class: "chapo" }, "Saisissez votre adresse email : vous recevrez un code à 6 chiffres pour vous connecter. Aucun mot de passe à retenir.")
+          h("p", { class: "chapo" }, "Saisissez votre adresse email\u00a0: vous recevrez un email pour vous connecter. Aucun mot de passe à retenir.")
         ),
         infoPrealable ? message("info", infoPrealable) : null,
         h("div", { class: "carte" }, formulaire)
@@ -244,7 +265,7 @@
     });
     chiffresSeulement(champ);
     const bouton = h("button", { class: "bouton", type: "submit" }, "Me connecter");
-    const renvoyer = h("button", { class: "bouton-lien", type: "button" }, "Renvoyer un code");
+    const renvoyer = h("button", { class: "bouton-lien", type: "button" }, "Renvoyer l'email");
     const changer = h("button", { class: "bouton-lien", type: "button", onclick: () => ecranEmail() }, "Changer d'adresse");
 
     // Délai d'une minute avant de pouvoir redemander un code.
@@ -252,13 +273,13 @@
     renvoyer.disabled = true;
     const minuteur = setInterval(() => {
       restant -= 1;
-      renvoyer.textContent = restant > 0 ? `Renvoyer un code (${restant} s)` : "Renvoyer un code";
+      renvoyer.textContent = restant > 0 ? `Renvoyer l'email (${restant} s)` : "Renvoyer l'email";
       if (restant <= 0) { renvoyer.disabled = false; clearInterval(minuteur); }
     }, 1000);
 
     renvoyer.addEventListener("click", async () => {
       renvoyer.disabled = true;
-      const { error } = await sb.auth.signInWithOtp({ email: etat.email, options: { shouldCreateUser: false } });
+      const { error } = await demanderAcces(etat.email);
       if (error && !/signups not allowed|otp_disabled/i.test(`${error.code} ${error.message}`)) {
         renvoyer.disabled = false;
         return signaler(zone, "erreur", texteErreur(error));
@@ -268,7 +289,7 @@
     });
 
     const formulaire = h("form", { novalidate: true },
-      h("label", { for: "champ-code-email" }, "Code à 6 chiffres", champ),
+      h("label", { for: "champ-code-email" }, "Votre email contient un code à 6 chiffres\u00a0?", h("span", { class: "aide" }, "Saisissez-le ici. Sinon, cliquez simplement sur le lien de l'email."), champ),
       zone,
       bouton,
       h("div", { class: "actions-secondaires" }, renvoyer, changer)
@@ -292,9 +313,9 @@
       h("div", { class: "pile" },
         h("div", {},
           h("p", { class: "surtitre" }, "Connexion · étape 2 sur 2"),
-          h("h1", {}, "Saisissez votre code"),
+          h("h1", {}, "Ouvrez votre boîte mail"),
           h("p", { class: "chapo" },
-            `Si l'adresse ${etat.email} a un accès, un code à 6 chiffres vient de lui être envoyé. Il est valable une heure. Pensez à regarder dans les courriers indésirables.`)
+            `Si l'adresse ${etat.email} a un accès, un email de connexion vient de lui être envoyé. Cliquez sur le lien qu'il contient : vous arriverez directement dans votre espace. Il est valable une heure. Pensez à regarder dans les courriers indésirables.`)
         ),
         h("div", { class: "carte" }, formulaire)
       )
