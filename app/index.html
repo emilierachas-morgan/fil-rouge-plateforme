@@ -6,6 +6,10 @@
   <meta name="robots" content="noindex, nofollow">
   <!-- Toujours fond blanc, même si le téléphone impose le mode sombre aux sites. -->
   <meta name="color-scheme" content="only light">
+  <!-- Sécurité : la page ne charge du code que depuis elle-même et la bibliothèque Supabase,
+       et ne parle qu'au projet Supabase de Fil Rouge Apprenants. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://cafcevtehuywovvsllvp.supabase.co wss://cafcevtehuywovvsllvp.supabase.co; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
   <title>Fil Rouge Apprenants</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -75,7 +75,7 @@ Pas d'outil de compilation : trois fichiers que n'importe quel hébergeur de sit
 - **Double authentification** obligatoire pour l'administratrice (application d'authentification sur téléphone). Sans elle, la base ne lui donne aucune donnée (règle testée).
 - **Accueil selon le rôle** : tableau de bord pour l'administratrice, liste de ses apprenants pour un client, liste des apprenants confiés pour une appelante.
 
-Mise en ligne : Netlify est relié à ce dépôt GitHub (`netlify.toml`). Chaque envoi sur la branche `main` met le site à jour automatiquement.
+Mise en ligne : GitHub Pages (`.github/workflows/pages.yml`). Chaque envoi sur la branche `main` publie le dossier `app` automatiquement sur https://emilierachas-morgan.github.io/fil-rouge-plateforme/. Le fichier `netlify.toml` permet aussi un hébergement Netlify si besoin.
 
 ## Projet Supabase
 
