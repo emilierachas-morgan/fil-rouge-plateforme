@@ -297,5 +297,57 @@ select tests.verifier(
   'supprimer un organisme efface ses apprenants, ses appels et les accès de ses comptes');
 rollback;
 
+\echo '\n== 9. CRM de prospection (étape 3)'
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+select tests.verifier((select count(*) from public.echanges_commerciaux) = 6, 'administratrice : voit les 6 échanges commerciaux');
+select tests.verifier(
+  public.creer_organisme('Organisme test', 'contacte', 'Jean Test', 'Directeur', 'jean@test.example', null, prive.aujourdhui() + 3, 'Note') is not null,
+  'administratrice : crée un organisme et sa fiche commerciale en une fois');
+select tests.verifier(
+  (select etape = 'contacte' and contact_nom = 'Jean Test'
+   from public.organismes_suivi_commercial s join public.organismes o on o.id = s.organisme_id
+   where o.nom = 'Organisme test'),
+  'la fiche commerciale du nouvel organisme est bien remplie');
+select tests.doit_etre_refuse(
+  $$select public.supprimer_prospect('a0000000-0000-4000-8000-000000000001')$$,
+  'impossible de supprimer un organisme qui a des apprenants');
+select public.supprimer_prospect('c0000000-0000-4000-8000-000000000004');
+select tests.verifier(
+  (select count(*) from public.organismes where id = 'c0000000-0000-4000-8000-000000000004') = 0,
+  'un prospect sans apprenant peut être supprimé');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal1');
+set local role authenticated;
+select tests.doit_etre_refuse(
+  $$select public.creer_organisme('Intrus')$$,
+  'sans double authentification : création refusée');
+select tests.verifier((select count(*) from public.echanges_commerciaux) = 0,
+  'sans double authentification : aucun échange visible');
+rollback;
+
+begin;
+select tests.session('22222222-2222-4222-8222-222222222222');
+set local role authenticated;
+select tests.verifier((select count(*) from public.echanges_commerciaux) = 0,
+  'client : ne voit AUCUN échange commercial, même ceux qui le concernent');
+select tests.doit_etre_refuse(
+  $$select public.creer_organisme('Intrus')$$,
+  'client : ne peut pas créer d''organisme');
+select tests.doit_etre_refuse(
+  $$select public.supprimer_prospect('c0000000-0000-4000-8000-000000000004')$$,
+  'client : ne peut rien supprimer');
+rollback;
+
+begin;
+set local role anon;
+select tests.doit_etre_refuse($$select * from public.echanges_commerciaux$$,
+  'visiteur non connecté : aucun accès aux échanges');
+rollback;
+
 \echo
 \echo 'TOUS LES TESTS SONT PASSÉS'

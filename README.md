@@ -10,7 +10,7 @@ Le cahier des charges complet est dans le document « Plateforme Fil Rouge — C
 | --- | --- | --- |
 | 1. La base | Tables, cloisonnement par organisme, données fictives, tests | Terminée |
 | 2. La connexion | Code par email, rôles, double authentification administratrice | Terminée |
-| 3. Prospects et clients | CRM commercial | À faire |
+| 3. Prospects et clients | CRM commercial : liste, relances, fiche, historique des échanges | Terminée |
 | 4. Import et liste | Import CSV, « Qui rappeler en premier ? » | À faire |
 | 5. Fiche apprenant et appels | Historique, « Noter un appel » | À faire |
 | 6. Portail client | Lecture seule, export CSV | À faire |
@@ -24,6 +24,7 @@ supabase/
     20261014000001_schema.sql     Tables, types, automatismes, vue « Qui rappeler »
     20261014000002_securite.sql   Cloisonnement : qui voit et modifie quoi
     20261014000003_double_authentification.sql  Droits admin seulement avec le second facteur
+    20261015000004_crm_prospection.sql  Historique des échanges, création et suppression sécurisées
   seed.sql                        Données 100 % fictives (2 clients, 3 prospects, 20 apprenants)
 app/                              Le site (HTML + JavaScript, sans compilation)
   index.html, app.js, styles.css
@@ -31,7 +32,7 @@ app/                              Le site (HTML + JavaScript, sans compilation)
   _headers                        En-têtes de sécurité pour l'hébergeur
 tests/
   00_simulation_supabase.sql      Recrée le minimum de Supabase pour tester en local
-  10_tests_cloisonnement.sql      57 vérifications d'accès
+  10_tests_cloisonnement.sql      68 vérifications d'accès
   lancer_tests.sh                 Lance tout dans une base jetable
 ```
 
@@ -64,7 +65,7 @@ Prérequis : PostgreSQL 15 ou plus installé localement.
 ./tests/lancer_tests.sh
 ```
 
-Le script crée une base jetable, charge la simulation Supabase, les deux migrations et les données fictives, puis vérifie 57 règles. Il s'arrête au premier échec. Les tests ont aussi été vérifiés « à l'envers » : en cassant volontairement une règle, ils échouent bien.
+Le script crée une base jetable, charge la simulation Supabase, les deux migrations et les données fictives, puis vérifie 68 règles. Il s'arrête au premier échec. Les tests ont aussi été vérifiés « à l'envers » : en cassant volontairement une règle, ils échouent bien.
 
 ## Le site (étape 2)
 
@@ -74,7 +75,7 @@ Pas d'outil de compilation : trois fichiers que n'importe quel hébergeur de sit
 - **Double authentification** obligatoire pour l'administratrice (application d'authentification sur téléphone). Sans elle, la base ne lui donne aucune donnée (règle testée).
 - **Accueil selon le rôle** : tableau de bord pour l'administratrice, liste de ses apprenants pour un client, liste des apprenants confiés pour une appelante.
 
-Mettre en ligne : déposer le dossier `app` sur Netlify Drop (https://app.netlify.com/drop), puis rattacher le site à un compte Netlify gratuit pour le garder.
+Mise en ligne : Netlify est relié à ce dépôt GitHub (`netlify.toml`). Chaque envoi sur la branche `main` met le site à jour automatiquement.
 
 ## Projet Supabase
 

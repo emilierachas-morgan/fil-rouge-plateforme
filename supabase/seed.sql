@@ -114,3 +114,15 @@ insert into public.notes_internes (appel_id, contenu) values
   ('a2000000-0000-4000-8000-000000000003', 'Séparation récente, déménagement en cours. Ne pas mentionner à l''organisme.'),
   ('a2000000-0000-4000-8000-000000000006', 'Se sent dépassé, a besoin d''être rassuré. Ton encourageant au prochain appel.'),
   ('b2000000-0000-4000-8000-000000000001', 'Garde des enfants compliquée le mercredi : appeler le mardi ou le jeudi.');
+
+-- -----------------------------------------------------------------------------
+-- Historique des échanges commerciaux (fictif)
+-- -----------------------------------------------------------------------------
+
+insert into public.echanges_commerciaux (organisme_id, date_echange, canal, resume) values
+  ('a0000000-0000-4000-8000-000000000001', prive.aujourdhui() - 60, 'email',     'Email n°1 envoyé : test gratuit sur leurs données.'),
+  ('a0000000-0000-4000-8000-000000000001', prive.aujourdhui() - 55, 'telephone', 'Appel de découverte : 30 apprenants, aucun suivi entre les modules.'),
+  ('a0000000-0000-4000-8000-000000000001', prive.aujourdhui() - 45, 'visio',     'Restitution du test gratuit. Abonnement 30 apprenants signé.'),
+  ('b0000000-0000-4000-8000-000000000002', prive.aujourdhui() - 6,  'email',     'Réponse positive à l''email n°1. Export de 10 lignes reçu.'),
+  ('c0000000-0000-4000-8000-000000000003', prive.aujourdhui() - 2,  'email',     'Email n°1 envoyé.'),
+  ('c0000000-0000-4000-8000-000000000005', prive.aujourdhui() - 20, 'telephone', 'Pas de budget cette année.');

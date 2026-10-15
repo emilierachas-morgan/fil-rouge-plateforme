@@ -1,0 +1,5 @@
+# Mise en ligne automatique par Netlify à chaque envoi sur GitHub.
+# Aucun outil de compilation : le dossier « app » est publié tel quel.
+[build]
+  publish = "app"
+  command = ""
