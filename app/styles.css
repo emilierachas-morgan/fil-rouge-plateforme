@@ -512,3 +512,14 @@ textarea { resize: vertical; min-height: 5.5rem; }
   flex-direction: column;
   gap: 0.75rem;
 }
+
+/* ---------- Parade au noircissement forcé (voir affichage.js) ---------- */
+/* Page noircie par le navigateur, puis retournée ici : elle redevient claire. */
+html.affichage-redresse { filter: invert(1) hue-rotate(180deg) brightness(1.08); background: #ffffff; }
+
+.pied p + p { margin-top: 0.4rem; }
+.pied .bouton-lien { font-size: 0.8rem; }
+/* Boutons pleins : en mode redressé, contour rouge sur fond blanc (rendu net). */
+html.affichage-redresse .bouton,
+html.affichage-redresse .bouton:hover { background: #ffffff; color: var(--rouge); border-width: 2px; }
+html.affichage-redresse .bouton-danger { color: var(--alerte-rouge); }
