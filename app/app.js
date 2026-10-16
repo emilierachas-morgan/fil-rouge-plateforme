@@ -591,6 +591,8 @@
     if (morceaux[0] === "prospection") return { nom: "prospection", etape: ETAPES.includes(morceaux[1]) ? morceaux[1] : null };
     if (morceaux[0] === "nouveau") return { nom: "nouveau" };
     if (morceaux[0] === "organisme" && UUID.test(morceaux[1] || "")) return { nom: "organisme", id: morceaux[1] };
+    if (morceaux[0] === "rappels") return { nom: "rappels", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
+    if (morceaux[0] === "import") return { nom: "import", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     return { nom: "accueil" };
   }
 
@@ -608,6 +610,7 @@
       h("a", { href: `#/${chemin}`, class: "onglet", "aria-current": actif === cle ? "page" : null }, texte);
     return h("nav", { class: "onglets", "aria-label": "Sections" },
       onglet("", "Tableau de bord", "accueil"),
+      onglet("rappels", "À rappeler", "rappels"),
       onglet("prospection", "Prospection", "prospection"));
   }
 
@@ -617,6 +620,8 @@
     if (route.nom === "prospection") return ecranProspection(route.etape);
     if (route.nom === "nouveau") return ecranNouvelOrganisme();
     if (route.nom === "organisme") return ecranOrganisme(route.id);
+    if (route.nom === "rappels") return ecranRappels(route.id);
+    if (route.nom === "import") return ecranImport(route.id);
     return accueilAdmin(etat.profil);
   }
 
@@ -670,6 +675,7 @@
           : null,
 
         blocCompteurs(compterAlertes(apprenants.data), apprenants.data.length),
+        h("p", { class: "lien-suite" }, lienInterne("rappels", "Voir qui rappeler en premier →")),
 
         h("section", {},
           h("div", { class: "section-titre" },
@@ -685,9 +691,9 @@
                       t.rouge ? pastille("rouge", `${t.rouge} en alerte`) : null,
                       t.orange ? pastille("orange", `${t.orange} à surveiller`) : null,
                       pastille("vert", `${t.vert} à jour`)),
-                    h("span", { class: "ligne-detail" }, pluriel(o.lignes.length, "apprenant actif", "apprenants actifs")));
+                    h("span", { class: "ligne-detail" }, pluriel(o.lignes.length, "apprenant actif", "apprenants actifs"), " · ", lienInterne(`rappels/${o.id}`, "qui rappeler")));
                 }))
-            : message("info", "Aucun client avec des apprenants pour le moment.")
+            : message("info", "Aucun client avec des apprenants pour le moment. Importez un premier fichier depuis la fiche d'un organisme.")
         ),
 
         h("section", {},
@@ -1007,6 +1013,12 @@
             s.prochaine_relance ? ` · Relance ${ecartJours(s.prochaine_relance)} (${dateLisible(s.prochaine_relance)})` : "")),
 
         h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Apprenants"), h("p", {}, pluriel(apprenantsCount, "apprenant", "apprenants"))),
+          h("div", { class: "actions-ligne" },
+            h("a", { href: `#/import/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Importer un fichier"),
+            apprenantsCount ? h("a", { href: `#/rappels/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Qui rappeler en premier") : null)),
+
+        h("section", {},
           h("div", { class: "section-titre" }, h("h2", {}, "Historique des échanges"), h("p", {}, pluriel(echanges.data.length, "échange", "échanges"))),
           h("div", { class: "carte carte-large" }, formulaireEchange),
           historique),
@@ -1020,6 +1032,247 @@
     );
     // Pas de focus automatique sur la fiche : la page s'ouvre en haut.
     window.scrollTo(0, 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // « Qui rappeler en premier ? » — tous les clients ou un seul
+  // ---------------------------------------------------------------------------
+
+  async function ecranRappels(organismeId) {
+    afficher(navigationAdmin("rappels"), h("p", { class: "chargement" }, "Chargement des apprenants…"));
+
+    const { data, error } = await sb
+      .from("vue_qui_rappeler")
+      .select("id, organisme_id, organisme_nom, identifiant_externe, prenom, nom, telephone, parcours, avancement_pct, derniere_connexion, jours_sans_contact, alerte");
+    if (error) return afficher(navigationAdmin("rappels"), message("erreur", texteErreur(error)));
+
+    const organismes = new Map();
+    for (const l of data) {
+      if (!organismes.has(l.organisme_id)) organismes.set(l.organisme_id, { id: l.organisme_id, nom: l.organisme_nom, n: 0 });
+      organismes.get(l.organisme_id).n++;
+    }
+    const visibles = trierParUrgence(data.filter((l) => !organismeId || l.organisme_id === organismeId));
+    const total = compterAlertes(visibles);
+
+    const filtre = (id, texte, n) =>
+      h("a", { href: id ? `#/rappels/${id}` : "#/rappels", class: "filtre", "aria-current": (organismeId || null) === id ? "true" : null },
+        texte, h("span", { class: "filtre-nombre" }, String(n)));
+
+    const ligne = (a) => {
+      const nomComplet = `${a.prenom || ""} ${a.nom || ""}`.trim() || a.identifiant_externe || "Apprenant";
+      const details = [
+        organismeId ? null : a.organisme_nom,
+        a.parcours,
+        a.avancement_pct !== null && a.avancement_pct !== undefined ? `${Math.round(a.avancement_pct)}\u00a0% réalisé` : null,
+        a.derniere_connexion ? `connecté·e le ${dateLisible(a.derniere_connexion)}` : null,
+      ].filter(Boolean).join(" · ");
+      return h("li", { class: "ligne" },
+        h("span", { class: "ligne-titre" }, nomComplet),
+        h("span", { class: "pastilles" }, pastille(a.alerte, `${a.jours_sans_contact} j · ${libelleAlerte(a.alerte)}`)),
+        h("span", { class: "ligne-detail" },
+          details,
+          a.telephone ? h("span", { class: "telephone" }, " · ", h("a", { href: `tel:${a.telephone.replace(/[^\d+]/g, "")}` }, a.telephone)) : null));
+    };
+
+    afficher(
+      navigationAdmin("rappels"),
+      h("div", { class: "pile" },
+        h("div", {},
+          h("p", { class: "surtitre" }, "À rappeler"),
+          h("h1", {}, "Qui rappeler en premier ?"),
+          h("p", { class: "chapo" }, "Apprenants actifs, classés du plus urgent au moins urgent selon le nombre de jours sans contact.")),
+        organismes.size > 1
+          ? h("div", { class: "filtres" },
+              filtre(null, "Tous les clients", data.length),
+              [...organismes.values()].sort((a, b) => a.nom.localeCompare(b.nom, "fr")).map((o) => filtre(o.id, o.nom, o.n)))
+          : null,
+        visibles.length ? blocCompteurs(total, visibles.length) : null,
+        visibles.length
+          ? h("ul", { class: "liste" }, visibles.map(ligne))
+          : message("info", "Aucun apprenant actif. Importez le fichier d'un client depuis sa fiche, dans Prospection."))
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Import d'un fichier d'apprenants (CSV)
+  // ---------------------------------------------------------------------------
+
+  const CLE_CORRESPONDANCE = "filrouge-correspondance-";
+
+  function lireCorrespondanceMemorisee(organismeId, entetes) {
+    try {
+      const brut = window.localStorage.getItem(CLE_CORRESPONDANCE + organismeId);
+      if (!brut) return null;
+      const memo = JSON.parse(brut); // { champ: "En-tête" }
+      const resultat = {};
+      for (const [champ, entete] of Object.entries(memo)) {
+        const i = entetes.indexOf(entete);
+        if (i >= 0) resultat[champ] = i;
+      }
+      return Object.keys(resultat).length ? resultat : null;
+    } catch (e) { return null; }
+  }
+
+  function memoriserCorrespondance(organismeId, correspondance, entetes) {
+    try {
+      const memo = {};
+      for (const [champ, i] of Object.entries(correspondance)) if (Number.isInteger(i)) memo[champ] = entetes[i];
+      window.localStorage.setItem(CLE_CORRESPONDANCE + organismeId, JSON.stringify(memo));
+    } catch (e) { /* mémorisation impossible : sans gravité */ }
+  }
+
+  async function ecranImport(organismeId) {
+    const I = window.FilRougeImport;
+    afficher(navigationAdmin("rappels"), h("p", { class: "chargement" }, "Préparation de l'import…"));
+
+    const { data: organismes, error } = await sb.from("organismes").select("id, nom").order("nom");
+    if (error) return afficher(navigationAdmin("rappels"), message("erreur", texteErreur(error)));
+    if (!organismes.length) return afficher(navigationAdmin("rappels"), message("info", "Ajoutez d'abord un organisme dans Prospection."));
+
+    const etatImport = { organismeId: organismes.some((o) => o.id === organismeId) ? organismeId : "", fichier: null, entetes: [], lignes: [], correspondance: {} };
+
+    const choixOrganisme = champChoix("import-organisme", "Client concerné",
+      Object.fromEntries([["", "— Choisir —"], ...organismes.map((o) => [o.id, o.nom])]), etatImport.organismeId);
+    const champFichier = h("input", { id: "import-fichier", type: "file", accept: ".csv,text/csv,text/plain" });
+    const zoneFichier = h("div");
+    const zoneCorrespondance = h("div", { class: "pile" });
+
+    const etape1 = h("div", { class: "carte carte-large" },
+      h("div", { class: "formulaire" },
+        choixOrganisme.bloc,
+        h("label", { for: "import-fichier" }, "Fichier des apprenants (CSV)",
+          h("span", { class: "aide" }, "Depuis Excel : Fichier › Enregistrer sous › « CSV (séparateur : point-virgule) ». Le fichier est lu sur cet appareil et n'est pas conservé."),
+          champFichier),
+        h("p", { class: "aide" }, "Pour essayer : ", h("a", { href: "exemple-apprenants-fictifs.csv", download: "exemple-apprenants-fictifs.csv" }, "télécharger un fichier d'exemple (12 apprenants fictifs)"), "."),
+        zoneFichier));
+
+    choixOrganisme.champ.addEventListener("change", () => {
+      etatImport.organismeId = choixOrganisme.champ.value;
+      if (etatImport.entetes.length) afficherCorrespondance();
+    });
+
+    champFichier.addEventListener("change", async () => {
+      signaler(zoneFichier);
+      zoneCorrespondance.replaceChildren();
+      const fichier = champFichier.files && champFichier.files[0];
+      if (!fichier) return;
+      if (/\.xlsx?$/i.test(fichier.name)) {
+        return signaler(zoneFichier, "erreur", "Ce fichier est au format Excel. Ouvrez-le dans Excel et enregistrez-le en « CSV (séparateur : point-virgule) », puis choisissez ce nouveau fichier.");
+      }
+      if (fichier.size > 5 * 1024 * 1024) return signaler(zoneFichier, "erreur", "Fichier trop lourd (plus de 5 Mo). Gardez seulement les colonnes utiles.");
+      const lu = I.lireCsv(I.decoder(new Uint8Array(await fichier.arrayBuffer())));
+      if (lu.entetes.length < 2 || !lu.lignes.length) {
+        return signaler(zoneFichier, "erreur", "Ce fichier ne contient pas de tableau lisible : il faut une ligne d'en-têtes, puis une ligne par apprenant.");
+      }
+      etatImport.fichier = fichier.name;
+      etatImport.entetes = lu.entetes;
+      etatImport.lignes = lu.lignes;
+      etatImport.correspondance = (etatImport.organismeId && lireCorrespondanceMemorisee(etatImport.organismeId, lu.entetes)) || I.devinerCorrespondance(lu.entetes);
+      signaler(zoneFichier, "info", `${fichier.name} : ${pluriel(lu.lignes.length, "ligne", "lignes")}, ${pluriel(lu.entetes.length, "colonne", "colonnes")}.`);
+      afficherCorrespondance();
+    });
+
+    function afficherCorrespondance() {
+      const choixColonnes = { "": "— Ne pas importer —" };
+      etatImport.entetes.forEach((e, i) => { choixColonnes[String(i)] = e; });
+
+      const selecteurs = I.CHAMPS.map((champ) => {
+        const actuel = etatImport.correspondance[champ.cle];
+        const c = champChoix(`corr-${champ.cle}`, champ.libelle, choixColonnes, Number.isInteger(actuel) ? String(actuel) : "");
+        c.champ.addEventListener("change", () => {
+          etatImport.correspondance[champ.cle] = c.champ.value === "" ? undefined : Number(c.champ.value);
+          majApercu();
+        });
+        return c.bloc;
+      });
+
+      const zoneApercu = h("div", { class: "pile" });
+      const zoneResultat = h("div");
+      const bouton = h("button", { class: "bouton", type: "button" }, "Importer");
+
+      function majApercu() {
+        const r = I.preparer(etatImport.lignes, etatImport.correspondance, etatImport.organismeId || "?");
+        const colonnes = I.CHAMPS.filter((c) => Number.isInteger(etatImport.correspondance[c.cle]));
+        const tableau = h("div", { class: "tableau-defilant" },
+          h("table", { class: "tableau" },
+            h("thead", {}, h("tr", {}, colonnes.map((c) => h("th", {}, c.libelle)))),
+            h("tbody", {}, r.valides.slice(0, 5).map((v) =>
+              h("tr", {}, colonnes.map((c) => h("td", {}, v[c.cle] === null || v[c.cle] === undefined ? "—" : String(v[c.cle]))))))));
+        bouton.textContent = r.valides.length ? `Importer ${pluriel(r.valides.length, "apprenant", "apprenants")}` : "Importer";
+        bouton.disabled = !r.valides.length || !etatImport.organismeId;
+        zoneApercu.replaceChildren(...[
+          h("h2", {}, "Aperçu"),
+          colonnes.length ? tableau : message("info", "Choisissez au moins une colonne."),
+          r.valides.length > 5 ? h("p", { class: "aide" }, `… et ${pluriel(r.valides.length - 5, "autre ligne", "autres lignes")}.`) : null,
+          !Number.isInteger(etatImport.correspondance.identifiant_externe)
+            ? message("info", "Pas de colonne d'identifiant : l'email (ou à défaut le prénom et le nom) servira à reconnaître chaque apprenant. Gardez la même façon de faire d'un import à l'autre pour éviter les doublons.")
+            : null,
+          r.doublons ? message("info", `${pluriel(r.doublons, "apprenant apparaît", "apprenants apparaissent")} plusieurs fois dans le fichier : la dernière ligne est retenue.`) : null,
+          r.erreurs.length
+            ? h("div", { class: "message message-erreur" },
+                h("strong", {}, `${pluriel(r.erreurs.length, "ligne ignorée", "lignes ignorées")} :`),
+                h("ul", { class: "liste-erreurs" },
+                  r.erreurs.slice(0, 10).map((e) => h("li", {}, `ligne ${e.ligne} — ${e.message}`)),
+                  r.erreurs.length > 10 ? h("li", {}, `… et ${r.erreurs.length - 10} autres`) : null))
+            : null,
+          !etatImport.organismeId ? message("erreur", "Choisissez le client concerné, tout en haut.") : null,
+        ].filter(Boolean));
+      }
+
+      bouton.addEventListener("click", async () => {
+        const r = I.preparer(etatImport.lignes, etatImport.correspondance, etatImport.organismeId);
+        if (!r.valides.length) return;
+        signaler(zoneResultat);
+        occupe(bouton, true, "Import en cours…");
+
+        // Combien existent déjà ? (pour annoncer nouveaux / mis à jour)
+        const existants = await sb.from("apprenants").select("identifiant_externe").eq("organisme_id", etatImport.organismeId);
+        const dejaLa = new Set((existants.data || []).map((e) => e.identifiant_externe));
+
+        let erreur = null;
+        for (let i = 0; i < r.valides.length && !erreur; i += 500) {
+          const lot = r.valides.slice(i, i + 500);
+          const res = await sb.from("apprenants").upsert(lot, { onConflict: "organisme_id,identifiant_externe", defaultToNull: false });
+          erreur = res.error;
+        }
+        occupe(bouton, false);
+        if (erreur) return signaler(zoneResultat, "erreur", `L'import s'est arrêté : ${texteErreur(erreur)}`);
+
+        memoriserCorrespondance(etatImport.organismeId, etatImport.correspondance, etatImport.entetes);
+        const nouveaux = r.valides.filter((v) => !dejaLa.has(v.identifiant_externe)).length;
+        etatImport.lignes = []; // le contenu du fichier n'est pas gardé en mémoire
+        champFichier.value = "";
+        zoneCorrespondance.replaceChildren(
+          h("div", { class: "message message-action" },
+            h("strong", {}, "Import terminé. "),
+            `${pluriel(nouveaux, "nouvel apprenant", "nouveaux apprenants")}, ${pluriel(r.valides.length - nouveaux, "mis à jour", "mis à jour")}`,
+            r.erreurs.length ? `, ${pluriel(r.erreurs.length, "ligne ignorée", "lignes ignorées")}` : "",
+            ". ",
+            lienInterne(`rappels/${etatImport.organismeId}`, "Voir qui rappeler en premier →")));
+        bouton.disabled = true;
+      });
+
+      zoneCorrespondance.replaceChildren(
+        h("section", { class: "carte carte-large" },
+          h("h2", {}, "Correspondance des colonnes"),
+          h("p", { class: "aide" }, "Pour chaque information, choisissez la colonne du fichier qui la contient. Les colonnes devinées sont déjà sélectionnées ; ce choix sera retenu pour les prochains imports de ce client."),
+          h("div", { class: "formulaire grille-correspondance" }, selecteurs)),
+        zoneApercu,
+        zoneResultat,
+        bouton);
+      majApercu();
+    }
+
+    afficher(
+      navigationAdmin("rappels"),
+      h("div", { class: "pile" },
+        h("div", {},
+          h("p", { class: "surtitre" }, etatImport.organismeId ? lienInterne(`organisme/${etatImport.organismeId}`, "← Fiche du client") : "Import"),
+          h("h1", {}, "Importer des apprenants"),
+          h("p", { class: "chapo" }, "Un nouvel import met à jour les apprenants déjà présents (reconnus par leur identifiant) et ajoute les nouveaux. Il ne supprime personne.")),
+        etape1,
+        zoneCorrespondance)
+    );
   }
 
   async function accueilClient(profil) {

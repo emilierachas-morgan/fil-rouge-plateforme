@@ -1,0 +1,13 @@
+﻿N° dossier;Prénom;Nom;Tél. portable;E-mail;Formation;Date d'entrée;Progression;Dernière connexion;Statut
+EX-100;Léa;Durand;0639981000;lea.durand@exemple.test;Titre pro Comptable assistant(e);06/07/2026;8 %;12/10/2026;En cours
+EX-101;Yassine;Haddou;0639981001;yassine.haddou@exemple.test;BTS Gestion de la PME;08/09/2026;76 %;16/09/2026;En cours
+EX-102;Manon;Petit;0639981002;manon.petit@exemple.test;Titre pro Secrétaire assistant(e);12/09/2026;13 %;16/09/2026;En cours
+EX-103;Kevin;Lemoine;0639981003;kevin.lemoine@exemple.test;Titre pro Secrétaire assistant(e);07/06/2026;13 %;30/09/2026;En cours
+EX-104;Sofia;Ferreira;0639981004;sofia.ferreira@exemple.test;Titre pro Secrétaire assistant(e);10/06/2026;30 %;15/10/2026;En cours
+EX-105;Bastien;Garnier;0639981005;bastien.garnier@exemple.test;Titre pro Secrétaire assistant(e);11/09/2026;7 %;30/09/2026;En cours
+EX-106;Amina;Traoré;0639981006;amina.traoré@exemple.test;Titre pro Secrétaire assistant(e);23/08/2026;71 %;07/10/2026;En cours
+EX-107;Théo;Morel;0639981007;theo.morel@exemple.test;Titre pro Comptable assistant(e);27/08/2026;25 %;07/10/2026;En cours
+EX-108;Chloé;Simon;0639981008;chloe.simon@exemple.test;Titre pro Secrétaire assistant(e);31/08/2026;72 %;10/10/2026;En cours
+EX-109;Ibrahim;Keita;0639981009;ibrahim.keita@exemple.test;Titre pro Secrétaire assistant(e);10/09/2026;65 %;15/10/2026;En cours
+EX-110;Pauline;Roussel;0639981010;pauline.roussel@exemple.test;Titre pro Comptable assistant(e);09/06/2026;60 %;04/10/2026;Terminé
+EX-111;Romain;Faure;0639981011;romain.faure@exemple.test;Titre pro Secrétaire assistant(e);26/06/2026;91 %;07/10/2026;Abandon

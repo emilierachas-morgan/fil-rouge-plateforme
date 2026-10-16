@@ -349,5 +349,48 @@ select tests.doit_etre_refuse($$select * from public.echanges_commerciaux$$,
   'visiteur non connecté : aucun accès aux échanges');
 rollback;
 
+\echo '\n== 10. Import d''apprenants (étape 4)'
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+-- Même requête que l'écran d'import : insertion, ou mise à jour si l'identifiant existe.
+insert into public.apprenants (organisme_id, identifiant_externe, prenom, nom, avancement_pct)
+values ('a0000000-0000-4000-8000-000000000001', 'AH-001', 'Julie', 'Martin-Dupont', 55),
+       ('a0000000-0000-4000-8000-000000000001', 'AH-NOUVEAU', 'Nina', 'Nouvelle', 0)
+on conflict (organisme_id, identifiant_externe) do update
+  set prenom = excluded.prenom, nom = excluded.nom, avancement_pct = excluded.avancement_pct;
+select tests.verifier(
+  (select count(*) from public.apprenants where organisme_id = 'a0000000-0000-4000-8000-000000000001') = 13,
+  'import : 1 apprenant ajouté, l''existant mis à jour sans doublon (12 + 1)');
+select tests.verifier(
+  (select nom = 'Martin-Dupont' and avancement_pct = 55 and date_dernier_contact is not null
+   from public.apprenants where identifiant_externe = 'AH-001'),
+  'import : la mise à jour garde l''historique de contact de l''apprenant');
+select tests.verifier(
+  (select statut = 'actif' from public.apprenants where identifiant_externe = 'AH-NOUVEAU'),
+  'import : un nouvel apprenant est « actif » par défaut');
+select tests.verifier(
+  (select count(*) from public.vue_qui_rappeler where identifiant_externe = 'AH-NOUVEAU') = 1,
+  'import : le nouvel apprenant apparaît aussitôt dans « Qui rappeler »');
+rollback;
+
+begin;
+select tests.session('22222222-2222-4222-8222-222222222222');
+set local role authenticated;
+select tests.doit_etre_refuse(
+  $$insert into public.apprenants (organisme_id, identifiant_externe, prenom) values ('a0000000-0000-4000-8000-000000000001', 'X', 'Intrus')
+    on conflict (organisme_id, identifiant_externe) do update set prenom = excluded.prenom$$,
+  'client : ne peut pas importer d''apprenants');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal1');
+set local role authenticated;
+select tests.doit_etre_refuse(
+  $$insert into public.apprenants (organisme_id, identifiant_externe, prenom) values ('a0000000-0000-4000-8000-000000000001', 'X', 'Intrus')$$,
+  'sans double authentification : import refusé');
+rollback;
+
 \echo
 \echo 'TOUS LES TESTS SONT PASSÉS'

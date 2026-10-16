@@ -11,7 +11,7 @@ Le cahier des charges complet est dans le document « Plateforme Fil Rouge — C
 | 1. La base | Tables, cloisonnement par organisme, données fictives, tests | Terminée |
 | 2. La connexion | Code par email, rôles, double authentification administratrice | Terminée |
 | 3. Prospects et clients | CRM commercial : liste, relances, fiche, historique des échanges | Terminée |
-| 4. Import et liste | Import CSV, « Qui rappeler en premier ? » | À faire |
+| 4. Import et liste | Import CSV avec correspondance des colonnes, « Qui rappeler en premier ? » | Terminée |
 | 5. Fiche apprenant et appels | Historique, « Noter un appel » | À faire |
 | 6. Portail client | Lecture seule, export CSV | À faire |
 | 7. Sécurité et mise en ligne | Plan Pro, nom de domaine, hébergement | À faire |
@@ -32,8 +32,9 @@ app/                              Le site (HTML + JavaScript, sans compilation)
   _headers                        En-têtes de sécurité pour l'hébergeur
 tests/
   00_simulation_supabase.sql      Recrée le minimum de Supabase pour tester en local
-  10_tests_cloisonnement.sql      68 vérifications d'accès
+  10_tests_cloisonnement.sql      74 vérifications d'accès
   lancer_tests.sh                 Lance tout dans une base jetable
+  import.test.js                  14 tests de lecture des fichiers CSV (node tests/import.test.js)
 ```
 
 ## Les tables
@@ -65,7 +66,7 @@ Prérequis : PostgreSQL 15 ou plus installé localement.
 ./tests/lancer_tests.sh
 ```
 
-Le script crée une base jetable, charge la simulation Supabase, les deux migrations et les données fictives, puis vérifie 68 règles. Il s'arrête au premier échec. Les tests ont aussi été vérifiés « à l'envers » : en cassant volontairement une règle, ils échouent bien.
+Le script crée une base jetable, charge la simulation Supabase, les deux migrations et les données fictives, puis vérifie 74 règles. Il s'arrête au premier échec. Les tests ont aussi été vérifiés « à l'envers » : en cassant volontairement une règle, ils échouent bien.
 
 ## Le site (étape 2)
 

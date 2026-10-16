@@ -523,3 +523,29 @@ html.affichage-redresse { filter: invert(1) hue-rotate(180deg) brightness(1.08);
 html.affichage-redresse .bouton,
 html.affichage-redresse .bouton:hover { background: #ffffff; color: var(--rouge); border-width: 2px; }
 html.affichage-redresse .bouton-danger { color: var(--alerte-rouge); }
+
+/* ---------- Étape 4 : liste à rappeler et import ---------- */
+
+.lien-suite { margin: -0.75rem 0 0; font-size: 0.92rem; }
+.lien-suite a, .ligne-detail .lien-interne { color: var(--rouge); }
+
+.telephone a { color: var(--rouge); font-weight: 700; text-decoration: none; white-space: nowrap; }
+
+.actions-ligne { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.grille-correspondance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem 1rem;
+}
+@media (max-width: 34rem) { .grille-correspondance { grid-template-columns: minmax(0, 1fr); } }
+
+input[type="file"] { font: inherit; font-weight: 400; max-width: 100%; }
+
+.tableau-defilant { overflow-x: auto; border: 1px solid var(--filet); border-radius: var(--rayon); }
+.tableau { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.tableau th, .tableau td { padding: 0.45rem 0.6rem; text-align: left; border-bottom: 1px solid var(--filet); white-space: nowrap; }
+.tableau th { color: var(--rouge); font-weight: 700; background: var(--fond-doux); }
+.tableau tr:last-child td { border-bottom: none; }
+
+.liste-erreurs { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; }
