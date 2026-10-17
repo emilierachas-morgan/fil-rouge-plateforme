@@ -210,7 +210,8 @@
       etat.profil = profil;
       return routeClient();
     }
-    return accueilAppelante(profil);
+    etat.profil = profil;
+    return routeAppelante();
   }
 
   // ---------------------------------------------------------------------------
@@ -527,10 +528,10 @@
     return h("ul", { class: "liste" },
       lignes.map((a) =>
         h("li", { class: "ligne" },
-          h("span", { class: "ligne-titre" }, `${a.prenom || ""} ${a.nom || ""}`.trim() || a.identifiant_externe || "Apprenant"),
+          h("span", { class: "ligne-titre" }, lienApprenant(a)),
           h("span", { class: "pastilles" },
             pastille(a.alerte, `${a.jours_sans_contact} j · ${libelleAlerte(a.alerte)}`)),
-          h("span", { class: "ligne-detail" }, a.parcours || "")
+          h("span", { class: "ligne-detail" }, a.parcours || "", lienTelephone(a.telephone))
         )
       )
     );
@@ -597,6 +598,7 @@
     if (morceaux[0] === "rappels") return { nom: "rappels", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "import") return { nom: "import", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "examens") return { nom: "examens", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
+    if (morceaux[0] === "apprenant" && UUID.test(morceaux[1] || "")) return { nom: "apprenant", id: morceaux[1] };
     if (morceaux[0] === "preuves") return { nom: "preuves", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     return { nom: "accueil" };
   }
@@ -629,6 +631,7 @@
     if (route.nom === "rappels") return ecranRappels(route.id);
     if (route.nom === "import") return ecranImport(route.id);
     if (route.nom === "examens") return ecranExamens(route.id);
+    if (route.nom === "apprenant") return ecranApprenant(route.id);
     if (route.nom === "preuves") return route.id ? ecranPreuves(route.id) : ecranExamens(null);
     return accueilAdmin(etat.profil);
   }
@@ -636,13 +639,24 @@
   // Espace client : son accueil, et son dossier de preuves (#/preuves).
   function routeClient() {
     if (!etat.profil || etat.profil.role !== "client") return aiguiller();
-    if (lireRoute().nom === "preuves") return ecranPreuves(etat.profil.organisme_id);
+    const route = lireRoute();
+    if (route.nom === "preuves") return ecranPreuves(etat.profil.organisme_id);
+    if (route.nom === "apprenant") return ecranApprenant(route.id);
     return accueilClient(etat.profil);
+  }
+
+  // Espace appelante : ses apprenants confiés, et leur fiche.
+  function routeAppelante() {
+    if (!etat.profil || etat.profil.role !== "appelante") return aiguiller();
+    const route = lireRoute();
+    if (route.nom === "apprenant") return ecranApprenant(route.id);
+    return accueilAppelante(etat.profil);
   }
 
   window.addEventListener("hashchange", () => {
     if (etat.profil && etat.profil.role === "admin") routeAdmin();
     else if (etat.profil && etat.profil.role === "client") routeClient();
+    else if (etat.profil && etat.profil.role === "appelante") routeAppelante();
   });
 
   // ---------------------------------------------------------------------------
@@ -1080,6 +1094,7 @@
     }
     const visibles = trierParUrgence(data.filter((l) => !organismeId || l.organisme_id === organismeId));
     const total = compterAlertes(visibles);
+    memoriserFile(visibles, organismeId ? `rappels/${organismeId}` : "rappels");
 
     const filtre = (id, texte, n) =>
       h("a", { href: id ? `#/rappels/${id}` : "#/rappels", class: "filtre", "aria-current": (organismeId || null) === id ? "true" : null },
@@ -1094,7 +1109,7 @@
         a.derniere_connexion ? `connecté·e le ${dateLisible(a.derniere_connexion)}` : null,
       ].filter(Boolean).join(" · ");
       return h("li", { class: "ligne" },
-        h("span", { class: "ligne-titre" }, nomComplet),
+        h("span", { class: "ligne-titre" }, lienInterne(`apprenant/${a.id}`, nomComplet)),
         h("span", { class: "pastilles" }, pastille(a.alerte, `${a.jours_sans_contact} j · ${libelleAlerte(a.alerte)}`)),
         h("span", { class: "ligne-detail" },
           details,
@@ -1481,7 +1496,7 @@
       }
       const details = [afficherOrganisme ? a.organisme_nom : null, a.parcours].filter(Boolean).join(" · ");
       li.replaceChildren(...[
-        h("span", { class: "ligne-titre" }, nomApprenant(a)),
+        h("span", { class: "ligne-titre" }, lienApprenant(a)),
         h("span", { class: "pastilles" }, pastilles),
         h("span", { class: "ligne-detail" }, details, lienTelephone(a.telephone)),
         zoneRapide.childNodes.length ? h("div", { class: "ligne-detail" }, zoneRapide) : null,
@@ -1516,6 +1531,7 @@
     const visibles = tous.filter(filtrer);
     const relanceParId = new Map(relances.data.map((r) => [r.id, r]));
     const ajd = aujourdhui();
+    const retourExamens = organismeId ? `examens/${organismeId}` : "examens";
 
     const rafraichir = () => ecranExamens(organismeId);
     const options = { afficherOrganisme: !organismeId, rafraichir };
@@ -1529,11 +1545,12 @@
     const aVenir = visibles.filter((a) => a.date_examen && a.date_examen >= ajd && !a.presence_examen && a.statut !== "abandon");
     const passes = visibles.filter((a) => a.date_examen && (a.date_examen < ajd || a.presence_examen)).sort((a, b) => b.date_examen.localeCompare(a.date_examen));
     const sansDate = visibles.filter((a) => !a.date_examen && a.statut === "actif");
+    memoriserFile([...aRelancer, ...aRenseigner], retourExamens);
 
     const ligneRelance = (a) => {
       const r = relanceParId.get(a.id);
       return h("li", { class: "ligne" },
-        h("span", { class: "ligne-titre" }, nomApprenant(a)),
+        h("span", { class: "ligne-titre" }, lienApprenant(a)),
         h("span", { class: "pastilles" }, pastille(COULEUR_RELANCE[r.etape_relance], `${r.etape_relance} · ${ecartJours(a.date_examen)}`)),
         h("span", { class: "ligne-detail" },
           [options.afficherOrganisme ? a.organisme_nom : null, a.parcours, `examen le ${dateLisible(a.date_examen)}`].filter(Boolean).join(" · "),
@@ -1843,12 +1860,291 @@
     window.scrollTo(0, 0);
   }
 
+  // ===========================================================================
+  // FICHE APPRENANT ET « NOTER UN APPEL » (étape 6)
+  // ===========================================================================
+  //   #/apprenant/<id>   pour l'administratrice, l'appelante (ses apprenants
+  //                      confiés) et le client (lecture seule)
+  // ===========================================================================
+
+  const COULEUR_RESULTAT_APPEL = { joint: "vert", messagerie: "orange", injoignable: "rouge", refuse_suivi: "neutre" };
+  // Suite proposée selon le résultat (modifiable avant d'enregistrer).
+  const SUITE_PROPOSEE = {
+    joint: ["Point d'étape", 7],
+    messagerie: ["Rappeler", 2],
+    injoignable: ["Rappeler à un autre moment de la journée", 1],
+    refuse_suivi: ["", null],
+  };
+  const NOTE_PROPOSEE = {
+    messagerie: "Message laissé, en attente de rappel.",
+    injoignable: "Pas de réponse, pas de messagerie.",
+  };
+
+  function lienApprenant(a, texte) {
+    return a && a.id ? lienInterne(`apprenant/${a.id}`, texte || nomApprenant(a)) : (texte || nomApprenant(a || {}));
+  }
+
+  // Mémorise l'ordre d'une liste pour proposer « Apprenant suivant » sur la fiche.
+  function memoriserFile(lignes, retour) {
+    etat.file = { ids: lignes.map((l) => l.id).filter(Boolean), retour };
+  }
+
+  function maintenantLocal() {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+  }
+
+  function dateHeureComplete(horodatage) {
+    const d = new Date(horodatage);
+    const jour = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Paris" });
+    const heure = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+    return `${jour} à ${heure}`;
+  }
+
+  function joursDepuis(dateIso) {
+    if (!dateIso) return null;
+    return Math.round((new Date(`${aujourdhui()}T12:00:00Z`) - new Date(`${dateIso}T12:00:00Z`)) / 86400000);
+  }
+
+  // Formulaire « Noter un appel ».
+  function formulaireAppel(apprenant, apresEnregistrement) {
+    const zone = h("div");
+    const choixResultat = h("div", { class: "choix-boutons", role: "radiogroup", "aria-label": "Résultat de l'appel" },
+      Object.entries(LIBELLE_RESULTAT_APPEL).map(([valeur, texte]) =>
+        h("label", { class: "choix-bouton" },
+          h("input", { type: "radio", name: "resultat", value: valeur }), h("span", {}, texte))));
+    const canal = champChoix("appel-canal", "Canal", LIBELLE_CANAL_APPEL, "telephone");
+    const quand = champTexte("appel-date", "Date et heure", maintenantLocal(), { type: "datetime-local" });
+    const noteClient = champTexte("appel-note-client", "Compte rendu pour l'organisme", "", {
+      multiligne: true, placeholder: "Ex. : Joint·e. Reprend le module 4 cette semaine, objectif examen maintenu.",
+    });
+    const noteInterne = champTexte("appel-note-interne", "Note interne (jamais visible par l'organisme)", "", {
+      multiligne: true, placeholder: "Ce que l'apprenant confie de personnel, conseils pour le prochain appel…",
+    });
+    const suite = champTexte("appel-suite", "Suite prévue", "", { placeholder: "Ex. : Point d'étape" });
+    const dateSuite = champTexte("appel-date-suite", "Date de la suite", "", { type: "date" });
+    const raccourcis = h("div", { class: "raccourcis" },
+      h("span", { class: "aide" }, "Dans :"),
+      [["1 j", 1], ["2 j", 2], ["7 j", 7], ["15 j", 15], ["1 mois", 30]].map(([texte, n]) =>
+        h("button", { type: "button", class: "puce", onclick: () => { dateSuite.champ.value = ajouterJours(aujourdhui(), n); } }, texte)),
+      h("button", { type: "button", class: "puce", onclick: () => { dateSuite.champ.value = ""; suite.champ.value = ""; } }, "Aucune"));
+    const conseil = h("div");
+    const bouton = h("button", { class: "bouton", type: "submit" }, "Enregistrer l'appel");
+
+    // Propositions automatiques tant que la personne n'a rien tapé.
+    const toucheParUtilisateur = new Set();
+    for (const c of [noteClient.champ, suite.champ, dateSuite.champ]) c.addEventListener("input", () => toucheParUtilisateur.add(c));
+    choixResultat.addEventListener("change", () => {
+      const resultat = choixResultat.querySelector("input:checked")?.value;
+      const [texteSuite, jours] = SUITE_PROPOSEE[resultat] || ["", null];
+      if (!toucheParUtilisateur.has(noteClient.champ)) noteClient.champ.value = NOTE_PROPOSEE[resultat] || "";
+      if (!toucheParUtilisateur.has(suite.champ)) suite.champ.value = texteSuite;
+      if (!toucheParUtilisateur.has(dateSuite.champ)) dateSuite.champ.value = jours ? ajouterJours(aujourdhui(), jours) : "";
+      signaler(conseil, resultat === "refuse_suivi" ? "info" : null,
+        resultat === "refuse_suivi" ? "Si l'apprenant arrête sa formation, passez aussi son statut en « Abandon » (en bas de la fiche)." : null);
+    });
+
+    const formulaire = h("form", { novalidate: true, class: "formulaire" },
+      h("fieldset", { class: "groupe" }, h("legend", {}, "Résultat"), choixResultat),
+      conseil,
+      noteClient.bloc,
+      noteInterne.bloc,
+      h("div", { class: "deux-colonnes" }, suite.bloc, dateSuite.bloc),
+      raccourcis,
+      h("details", { class: "depliant" },
+        h("summary", {}, "Canal, date et heure"),
+        h("div", { class: "deux-colonnes" }, canal.bloc, quand.bloc)),
+      zone, bouton);
+
+    formulaire.addEventListener("submit", async (evenement) => {
+      evenement.preventDefault();
+      const resultat = choixResultat.querySelector("input:checked")?.value;
+      if (!resultat) return signaler(zone, "erreur", "Choisissez le résultat de l'appel.");
+      const date = quand.champ.value ? new Date(quand.champ.value) : new Date();
+      if (Number.isNaN(date.getTime())) return signaler(zone, "erreur", "La date et l'heure ne sont pas valables.");
+      if (date.getTime() > Date.now() + 10 * 60000) return signaler(zone, "erreur", "La date de l'appel ne peut pas être dans le futur.");
+      signaler(zone);
+      occupe(bouton, true, "Enregistrement…");
+      const { error } = await sb.rpc("noter_appel", {
+        p_apprenant: apprenant.id,
+        p_resultat: resultat,
+        p_canal: canal.champ.value,
+        p_date_appel: date.toISOString(),
+        p_note_client: noteClient.champ.value,
+        p_note_interne: noteInterne.champ.value,
+        p_prochaine_action: suite.champ.value,
+        p_date_prochaine_action: dateSuite.champ.value || null,
+      });
+      occupe(bouton, false);
+      if (error) return signaler(zone, "erreur", texteErreur(error));
+      apresEnregistrement();
+    });
+    return formulaire;
+  }
+
+  function ligneHistorique(appel, options) {
+    const { peutSupprimer, apresSuppression } = options;
+    const noteInterne = appel.notes_internes && appel.notes_internes.contenu;
+    let suppression = null;
+    if (peutSupprimer) {
+      const zone = h("div");
+      const demander = h("button", { type: "button", class: "bouton-lien bouton-lien-danger" }, "Supprimer");
+      const confirmer = h("button", { type: "button", class: "bouton-lien bouton-lien-danger", hidden: true }, "Oui, supprimer cet appel");
+      const annuler = h("button", { type: "button", class: "bouton-lien", hidden: true }, "Annuler");
+      demander.addEventListener("click", () => { demander.hidden = true; confirmer.hidden = false; annuler.hidden = false; });
+      annuler.addEventListener("click", () => { demander.hidden = false; confirmer.hidden = true; annuler.hidden = true; });
+      confirmer.addEventListener("click", async () => {
+        occupe(confirmer, true, "Suppression…");
+        const { error } = await sb.from("appels").delete().eq("id", appel.id);
+        occupe(confirmer, false);
+        if (error) return signaler(zone, "erreur", texteErreur(error));
+        apresSuppression();
+      });
+      suppression = h("div", { class: "ligne-detail" }, h("div", { class: "actions-secondaires" }, demander, confirmer, annuler), zone);
+    }
+    return h("li", { class: "ligne ligne-echange" }, ...[
+      h("span", { class: "ligne-titre" }, dateHeureComplete(appel.date_appel)),
+      h("span", { class: "pastilles" },
+        pastille("neutre", LIBELLE_CANAL_APPEL[appel.canal] || appel.canal),
+        pastille(COULEUR_RESULTAT_APPEL[appel.resultat] || "neutre", LIBELLE_RESULTAT_APPEL[appel.resultat] || appel.resultat)),
+      appel.note_client ? h("span", { class: "ligne-detail texte-libre" }, appel.note_client) : null,
+      appel.prochaine_action || appel.date_prochaine_action
+        ? h("span", { class: "ligne-detail" }, "Suite : ", [appel.prochaine_action, appel.date_prochaine_action ? `le ${dateLisible(appel.date_prochaine_action)}` : null].filter(Boolean).join(" "))
+        : null,
+      noteInterne ? h("div", { class: "ligne-detail note-interne" }, h("strong", {}, "Note interne · "), noteInterne) : null,
+      suppression,
+    ].filter(Boolean));
+  }
+
+  async function ecranApprenant(id, info) {
+    const role = etat.profil?.role;
+    const estAdmin = role === "admin";
+    const peutNoter = estAdmin || role === "appelante";
+    const entete = () => (estAdmin ? [navigationAdmin("rappels")] : []);
+    afficher(...entete(), h("p", { class: "chargement" }, "Chargement de la fiche…"));
+
+    const [apprenant, appels] = await Promise.all([
+      sb.from("apprenants")
+        .select("id, organisme_id, identifiant_externe, prenom, nom, telephone, email, parcours, date_inscription, avancement_pct, derniere_connexion, statut, date_dernier_contact, cree_le, date_examen, presence_examen, resultat_examen, organismes ( nom, seuil_vert_jours, seuil_orange_jours )")
+        .eq("id", id).maybeSingle(),
+      sb.from("appels")
+        .select(peutNoter
+          ? "id, date_appel, canal, resultat, note_client, prochaine_action, date_prochaine_action, auteur_id, notes_internes ( contenu )"
+          : "id, date_appel, canal, resultat, note_client, prochaine_action, date_prochaine_action")
+        .eq("apprenant_id", id).order("date_appel", { ascending: false }).order("id"),
+    ]);
+    const erreur = apprenant.error || appels.error;
+    if (erreur) return afficher(...entete(), message("erreur", texteErreur(erreur)));
+    const retourParDefaut = estAdmin ? "rappels" : "";
+    if (!apprenant.data) {
+      return afficher(...entete(), message("info", "Cette fiche n'existe pas ou ne vous est pas accessible."), lienInterne(retourParDefaut, "← Retour à la liste"));
+    }
+
+    const a = apprenant.data;
+    const org = a.organismes || {};
+    const rafraichir = (texte) => ecranApprenant(id, texte);
+
+    // Jours sans contact et couleur, comme dans « Qui rappeler ».
+    const reference = a.date_dernier_contact || a.date_inscription || (a.cree_le || "").slice(0, 10);
+    const jours = joursDepuis(reference);
+    const couleur = jours === null ? "neutre" : jours <= (org.seuil_vert_jours ?? 7) ? "vert" : jours <= (org.seuil_orange_jours ?? 14) ? "orange" : "rouge";
+
+    // Apprenant suivant dans la dernière liste consultée.
+    const file = etat.file && etat.file.ids.includes(id) ? etat.file : null;
+    const suivantId = file ? file.ids[file.ids.indexOf(id) + 1] : null;
+    const retour = file ? file.retour : retourParDefaut;
+
+    // --- Statut (administratrice) ---
+    let blocStatut = null;
+    if (estAdmin) {
+      const zone = h("div");
+      const statut = champChoix("fiche-statut", "Statut de l'apprenant", LIBELLE_STATUT, a.statut);
+      const bouton = h("button", { type: "submit", class: "bouton bouton-secondaire bouton-petit" }, "Enregistrer le statut");
+      const formulaire = h("form", { class: "formulaire", novalidate: true }, statut.bloc, zone, bouton);
+      formulaire.addEventListener("submit", async (evenement) => {
+        evenement.preventDefault();
+        occupe(bouton, true, "Enregistrement…");
+        const { error } = await sb.from("apprenants").update({ statut: statut.champ.value }).eq("id", id);
+        occupe(bouton, false);
+        if (error) return signaler(zone, "erreur", texteErreur(error));
+        rafraichir("Statut enregistré.");
+      });
+      blocStatut = h("section", {},
+        h("div", { class: "section-titre" }, h("h2", {}, "Statut")),
+        h("div", { class: "carte carte-large" },
+          h("p", { class: "aide" }, "« Abandon » et « Terminé » retirent l'apprenant de la liste « Qui rappeler »."),
+          formulaire));
+    }
+
+    // --- Examen ---
+    const resumeExamen = a.date_examen
+      ? [`Le ${dateLisible(a.date_examen)} (${ecartJours(a.date_examen).replace("en retard de", "il y a")})`,
+         a.presence_examen ? LIBELLE_PRESENCE[a.presence_examen] : null,
+         a.resultat_examen ? LIBELLE_RESULTAT[a.resultat_examen] : null].filter(Boolean).join(" · ")
+      : "Pas encore de date d'examen.";
+    const blocExamen = h("section", {},
+      h("div", { class: "section-titre" }, h("h2", {}, "Examen")),
+      h("p", {}, resumeExamen),
+      estAdmin ? editeurExamen(a, () => rafraichir("Examen enregistré.")) : null);
+
+    const historique = appels.data.length
+      ? h("ul", { class: "liste" }, appels.data.map((ap) =>
+          ligneHistorique(ap, { peutSupprimer: estAdmin, apresSuppression: () => rafraichir("Appel supprimé.") })))
+      : message("info", "Aucun appel pour l'instant.");
+
+    const coordonnees = h("div", { class: "actions-ligne" },
+      a.telephone ? h("a", { href: `tel:${a.telephone.replace(/[^\d+]/g, "")}`, class: "bouton" }, `Appeler · ${a.telephone}`) : null,
+      a.email ? h("a", { href: `mailto:${a.email}`, class: "bouton bouton-secondaire" }, "Écrire un email") : null);
+
+    afficher(
+      ...entete(),
+      h("div", { class: "pile" },
+        h("div", {},
+          h("p", { class: "surtitre" }, lienInterne(retour, "← Retour à la liste")),
+          h("h1", {}, nomApprenant(a)),
+          h("p", { class: "chapo" },
+            [org.nom, a.parcours, a.identifiant_externe].filter(Boolean).join(" · "), " ",
+            a.statut === "actif"
+              ? pastille(couleur, jours === null ? "jamais contacté·e" : `${jours} j sans contact`)
+              : pastille("neutre", LIBELLE_STATUT[a.statut]))),
+
+        info ? message("info", info) : null,
+        suivantId
+          ? h("p", { class: "message message-action" }, lienInterne(`apprenant/${suivantId}`, "Apprenant suivant dans la liste →"))
+          : null,
+
+        peutNoter ? coordonnees : null,
+
+        h("div", { class: "compteurs" },
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, a.avancement_pct === null || a.avancement_pct === undefined ? "—" : `${Math.round(a.avancement_pct)} %`), h("span", { class: "compteur-libelle" }, "avancement")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur compteur-valeur-date" }, a.derniere_connexion ? dateLisible(a.derniere_connexion) : "—"), h("span", { class: "compteur-libelle" }, "dernière connexion")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur compteur-valeur-date" }, a.date_dernier_contact ? dateLisible(a.date_dernier_contact) : "—"), h("span", { class: "compteur-libelle" }, "dernier contact")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur compteur-valeur-date" }, a.date_examen ? dateLisible(a.date_examen) : "—"), h("span", { class: "compteur-libelle" }, "examen"))),
+
+        peutNoter
+          ? h("section", {},
+              h("div", { class: "section-titre" }, h("h2", {}, "Noter un appel")),
+              h("div", { class: "carte carte-large" }, formulaireAppel(a, () => rafraichir("Appel enregistré. Le compteur repart à zéro."))))
+          : null,
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Historique des appels"), h("p", {}, pluriel(appels.data.length, "appel", "appels"))),
+          historique),
+
+        blocExamen,
+        blocStatut)
+    );
+    window.scrollTo(0, 0);
+  }
+
   async function accueilClient(profil) {
     afficher(h("p", { class: "chargement" }, "Chargement de vos apprenants…"));
 
     const [organisme, apprenants, tauxCohortes, examensAVenir] = await Promise.all([
       sb.from("organismes").select("nom, taux_presence_depart").eq("id", profil.organisme_id).maybeSingle(),
-      sb.from("vue_qui_rappeler").select("identifiant_externe, prenom, nom, parcours, jours_sans_contact, alerte"),
+      sb.from("vue_qui_rappeler").select("id, identifiant_externe, prenom, nom, parcours, jours_sans_contact, alerte"),
       sb.from("vue_taux_examen").select("*"),
       sb.from("vue_relances_examen").select("id", { count: "exact", head: true }),
     ]);
@@ -1879,7 +2175,7 @@
           h("div", { class: "section-titre" },
             h("h2", {}, "Vos apprenants"),
             h("p", {}, "Les plus urgents en premier")),
-          listeApprenants(trierParUrgence(apprenants.data)))
+          (memoriserFile(trierParUrgence(apprenants.data), ""), listeApprenants(trierParUrgence(apprenants.data))))
       )
     );
   }
@@ -1888,8 +2184,9 @@
     afficher(h("p", { class: "chargement" }, "Chargement de vos apprenants…"));
     const { data, error } = await sb
       .from("vue_qui_rappeler")
-      .select("identifiant_externe, prenom, nom, parcours, jours_sans_contact, alerte");
+      .select("id, identifiant_externe, prenom, nom, parcours, telephone, jours_sans_contact, alerte");
     if (error) return afficher(message("erreur", texteErreur(error)));
+    memoriserFile(trierParUrgence(data), "");
 
     afficher(
       h("div", { class: "pile" },

@@ -13,7 +13,7 @@ Le cahier des charges complet est dans le document « Plateforme Fil Rouge — C
 | 3. Prospects et clients | CRM commercial : liste, relances, fiche, historique des échanges | Terminée |
 | 4. Import et liste | Import CSV avec correspondance des colonnes, « Qui rappeler en premier ? » | Terminée |
 | 5. Jusqu'à l'examen | Date d'examen, présence, résultat ; relances J-30 / J-7 / J-1 ; taux par cohorte ; dossier de preuves Qualiopi | Terminée |
-| 5 bis. Fiche apprenant et appels | Historique, « Noter un appel » | À faire |
+| 6. Fiche apprenant et appels | Fiche, « Noter un appel », note interne, historique, apprenant suivant | Terminée |
 | 6. Portail client | Lecture seule, export CSV | À faire |
 | 7. Sécurité et mise en ligne | Plan Pro, nom de domaine, hébergement | À faire |
 
@@ -27,6 +27,7 @@ supabase/
     20261014000003_double_authentification.sql  Droits admin seulement avec le second facteur
     20261015000004_crm_prospection.sql  Historique des échanges, création et suppression sécurisées
     20261017000005_suivi_examen.sql     Examen (date, présence, résultat), relances J-30/J-7/J-1, taux par cohorte
+    20261017000006_fiche_apprenant.sql  noter_appel() (appel + note interne en une fois), correction du dernier contact si un appel est supprimé
   seed.sql                        Données 100 % fictives (2 clients, 3 prospects, 20 apprenants)
 app/                              Le site (HTML + JavaScript, sans compilation)
   index.html, app.js, styles.css
@@ -34,7 +35,7 @@ app/                              Le site (HTML + JavaScript, sans compilation)
   _headers                        En-têtes de sécurité pour l'hébergeur
 tests/
   00_simulation_supabase.sql      Recrée le minimum de Supabase pour tester en local
-  10_tests_cloisonnement.sql      90 vérifications d'accès et de calcul
+  10_tests_cloisonnement.sql      102 vérifications d'accès et de calcul
   lancer_tests.sh                 Lance tout dans une base jetable
   import.test.js                  17 tests de lecture des fichiers CSV (node tests/import.test.js)
 ```
@@ -68,6 +69,14 @@ tests/
 - **Relance faite** : un contact noté dans la fenêtre de l'étape (30, 7 ou 1 jour avant l'examen) suffit.
 - **Import** : trois nouvelles colonnes reconnues (date d'examen, présence, résultat). Une cellule vide n'efface jamais ce qui a été saisi dans la plateforme.
 - **Dossier de preuves Qualiopi** (`#/preuves/<id>`, et `#/preuves` côté client) : synthèse, indicateur 12 (chaque contact daté, résultat, suite), indicateur 19 (avancement, connexion, dernier contact), présentation à l'examen, indicateur 27 (sous-traitance). Impression ou PDF depuis le navigateur, et deux exports pour Excel. Les notes internes n'y figurent jamais.
+
+## Fiche apprenant (étape 6)
+
+- **Accès** : en touchant un nom dans n'importe quelle liste (« Qui rappeler », Examens, espace client, espace appelante).
+- **Noter un appel** (administratrice et appelante) : résultat en un geste, compte rendu pour l'organisme, note interne, suite prévue avec raccourcis. Les champs se pré-remplissent selon le résultat (ex. : message laissé → rappeler dans 2 jours). L'appel et la note interne s'enregistrent ensemble (`noter_appel`), sinon rien.
+- **Apprenant suivant** : la fiche propose le suivant de la liste d'où l'on vient, pour enchaîner les appels.
+- **Administratrice** : supprime un appel saisi par erreur (le dernier contact est recalculé), modifie l'examen et le statut.
+- **Client** : lit la fiche et les comptes rendus, jamais les notes internes.
 
 ## Lancer les tests
 

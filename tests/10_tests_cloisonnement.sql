@@ -468,5 +468,67 @@ select tests.doit_etre_refuse($$select * from public.vue_taux_examen$$, 'visiteu
 select tests.doit_etre_refuse($$select * from public.vue_relances_examen$$, 'visiteur non connecté : aucune relance d''examen');
 rollback;
 
+\echo '\n== 12. Fiche apprenant et « Noter un appel » (étape 6)'
+
+begin;
+select tests.session('44444444-4444-4444-8444-444444444444');
+set local role authenticated;
+select tests.verifier(
+  (select public.noter_appel('a1000000-0000-4000-8000-000000000001', 'joint', 'telephone', now(),
+     'Reprise des modules cette semaine.', 'Fatiguée, garde alternée.', 'Point d''étape', prive.aujourdhui() + 7)) is not null,
+  'appelante : note un appel pour une apprenante confiée');
+select tests.verifier(
+  (select count(*) from public.vue_qui_rappeler where identifiant_externe = 'AH-001' and jours_sans_contact = 0) = 1,
+  'appelante : le compteur de Julie repart à zéro');
+select tests.verifier(
+  (select count(*) from public.notes_internes ni join public.appels ap on ap.id = ni.appel_id
+   where ap.apprenant_id = 'a1000000-0000-4000-8000-000000000001' and ni.contenu like 'Fatiguée%') = 1,
+  'appelante : relit la note interne de son propre appel');
+select tests.verifier(
+  (select auteur_id = '44444444-4444-4444-8444-444444444444' and organisme_id = 'a0000000-0000-4000-8000-000000000001'
+   from public.appels where note_client = 'Reprise des modules cette semaine.'),
+  'l''appel porte son autrice et l''organisme de l''apprenante');
+select tests.doit_etre_refuse(
+  $$select public.noter_appel('a1000000-0000-4000-8000-000000000002', 'joint')$$,
+  'appelante : refusé pour un apprenant qui ne lui est pas confié');
+select tests.doit_etre_refuse(
+  $$select public.noter_appel('a1000000-0000-4000-8000-000000000001', 'joint', 'telephone', now() + interval '2 days')$$,
+  'appel daté dans le futur : refusé');
+select tests.verifier(
+  tests.lignes_touchees($$delete from public.appels where apprenant_id = 'a1000000-0000-4000-8000-000000000001'$$) = 0,
+  'appelante : ne peut pas supprimer d''appel');
+rollback;
+
+begin;
+select tests.session('22222222-2222-4222-8222-222222222222');
+set local role authenticated;
+select tests.doit_etre_refuse(
+  $$select public.noter_appel('a1000000-0000-4000-8000-000000000001', 'joint')$$,
+  'client : ne peut pas noter d''appel');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+do $$ begin perform public.noter_appel('a1000000-0000-4000-8000-000000000004', 'joint', 'telephone', now(), 'Appel saisi par erreur.'); end $$;
+select tests.verifier(
+  (select date_dernier_contact = prive.aujourdhui() from public.apprenants where identifiant_externe = 'AH-004'),
+  'administratrice : appel noté, dernier contact à aujourd''hui');
+select tests.verifier(
+  tests.lignes_touchees($$delete from public.appels where note_client = 'Appel saisi par erreur.'$$) = 1,
+  'administratrice : supprime un appel saisi par erreur');
+select tests.verifier(
+  (select date_dernier_contact = prive.aujourdhui() - 16 from public.apprenants where identifiant_externe = 'AH-004'),
+  'après suppression : le dernier contact revient à l''appel précédent (il y a 16 j)');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal1');
+set local role authenticated;
+select tests.doit_etre_refuse(
+  $$select public.noter_appel('a1000000-0000-4000-8000-000000000001', 'joint')$$,
+  'sans double authentification : appel refusé');
+rollback;
+
 \echo
 \echo 'TOUS LES TESTS SONT PASSÉS'
