@@ -14,7 +14,7 @@ Le cahier des charges complet est dans le document « Plateforme Fil Rouge — C
 | 4. Import et liste | Import CSV avec correspondance des colonnes, « Qui rappeler en premier ? » | Terminée |
 | 5. Jusqu'à l'examen | Date d'examen, présence, résultat ; relances J-30 / J-7 / J-1 ; taux par cohorte ; dossier de preuves Qualiopi | Terminée |
 | 6. Fiche apprenant et appels | Fiche, « Noter un appel », note interne, historique, apprenant suivant | Terminée |
-| 6. Portail client | Lecture seule, export CSV | À faire |
+| 7. Comptes et portail client | Création des comptes clients et appelantes depuis l'onglet Accès, désactivation, apprenants confiés ; espace client en lecture seule avec exports | Terminée |
 | 7. Sécurité et mise en ligne | Plan Pro, nom de domaine, hébergement | À faire |
 
 ## Contenu du dossier
@@ -27,15 +27,18 @@ supabase/
     20261014000003_double_authentification.sql  Droits admin seulement avec le second facteur
     20261015000004_crm_prospection.sql  Historique des échanges, création et suppression sécurisées
     20261017000005_suivi_examen.sql     Examen (date, présence, résultat), relances J-30/J-7/J-1, taux par cohorte
+    20261017000007_comptes.sql          je_suis_admin(), protection de son propre compte, apprenants confiés à une appelante active
     20261017000006_fiche_apprenant.sql  noter_appel() (appel + note interne en une fois), correction du dernier contact si un appel est supprimé
   seed.sql                        Données 100 % fictives (2 clients, 3 prospects, 20 apprenants)
+functions/
+    gerer-comptes/index.ts        Fonction serveur : création des comptes (seule à détenir la clé de service)
 app/                              Le site (HTML + JavaScript, sans compilation)
   index.html, app.js, styles.css
   config.js                       Adresse du projet et clé publique (sans danger)
   _headers                        En-têtes de sécurité pour l'hébergeur
 tests/
   00_simulation_supabase.sql      Recrée le minimum de Supabase pour tester en local
-  10_tests_cloisonnement.sql      102 vérifications d'accès et de calcul
+  10_tests_cloisonnement.sql      115 vérifications d'accès et de calcul
   lancer_tests.sh                 Lance tout dans une base jetable
   import.test.js                  17 tests de lecture des fichiers CSV (node tests/import.test.js)
 ```
@@ -77,6 +80,13 @@ tests/
 - **Apprenant suivant** : la fiche propose le suivant de la liste d'où l'on vient, pour enchaîner les appels.
 - **Administratrice** : supprime un appel saisi par erreur (le dernier contact est recalculé), modifie l'examen et le statut.
 - **Client** : lit la fiche et les comptes rendus, jamais les notes internes.
+
+## Comptes (étape 7)
+
+- **Onglet Accès** : créer le compte d'un client (rattaché à son organisme) ou d'une appelante. La plateforme prépare le message à envoyer, avec l'adresse du site. La personne se connecte ensuite avec son email.
+- **Fonction serveur `gerer-comptes`** : seule à détenir la clé de service. Elle vérifie que la demande vient de l'administratrice avec la double authentification, refuse de créer un compte administratrice, et annule tout si l'enregistrement échoue. Déploiement : `supabase functions deploy gerer-comptes`.
+- **Désactiver** coupe l'accès immédiatement sans rien effacer ; l'administratrice ne peut pas désactiver son propre compte.
+- **Confier un apprenant** à une appelante active, depuis sa fiche.
 
 ## Lancer les tests
 

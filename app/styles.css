@@ -626,3 +626,18 @@ h3 { font-size: 1.05rem; margin: 0.4rem 0 0; color: var(--texte); }
   white-space: pre-wrap;
 }
 .compteur-valeur-date { font-size: 1.15rem; }
+
+/* ---------- Accès (étape 7) ---------- */
+
+.message-a-envoyer {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  background: var(--fond-doux);
+  font-size: 0.9rem;
+  user-select: all;
+}
+.onglets { overflow-x: auto; scrollbar-width: none; }
+.onglet { white-space: nowrap; }
+@media (max-width: 34rem) { .onglets { gap: 1.1rem; } .onglet { font-size: 0.92rem; } }

@@ -530,5 +530,55 @@ select tests.doit_etre_refuse(
   'sans double authentification : appel refusé');
 rollback;
 
+\echo '\n== 13. Comptes clients et appelantes (étape 7)'
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+select tests.verifier(public.je_suis_admin(), 'administratrice avec double authentification : reconnue');
+select tests.doit_etre_refuse(
+  $$update public.profils set actif = false where id = '11111111-1111-4111-8111-111111111111'$$,
+  'administratrice : ne peut pas désactiver son propre compte');
+select tests.doit_etre_refuse(
+  $$update public.profils set role = 'client', organisme_id = 'a0000000-0000-4000-8000-000000000001' where id = '11111111-1111-4111-8111-111111111111'$$,
+  'administratrice : ne peut pas changer son propre rôle');
+select tests.verifier(
+  tests.lignes_touchees($$update public.profils set actif = false where id = '33333333-3333-4333-8333-333333333333'$$) = 1,
+  'administratrice : désactive le compte d''un client');
+select tests.verifier(
+  tests.lignes_touchees($$update public.apprenants set appelante_id = '44444444-4444-4444-8444-444444444444' where identifiant_externe = 'AH-002'$$) = 1,
+  'administratrice : confie un apprenant à l''appelante');
+select tests.doit_etre_refuse(
+  $$update public.apprenants set appelante_id = '22222222-2222-4222-8222-222222222222' where identifiant_externe = 'AH-005'$$,
+  'un apprenant ne peut pas être confié à un compte client');
+update public.profils set actif = false where id = '44444444-4444-4444-8444-444444444444';
+select tests.doit_etre_refuse(
+  $$update public.apprenants set appelante_id = '44444444-4444-4444-8444-444444444444' where identifiant_externe = 'AH-006'$$,
+  'un apprenant ne peut pas être confié à une appelante désactivée');
+select tests.verifier(
+  tests.lignes_touchees($$update public.apprenants set appelante_id = null where identifiant_externe = 'AH-001'$$) = 1,
+  'administratrice : reprend un apprenant (plus confié à personne)');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal1');
+set local role authenticated;
+select tests.verifier(not public.je_suis_admin(), 'administratrice sans double authentification : pas reconnue');
+rollback;
+
+begin;
+select tests.session('22222222-2222-4222-8222-222222222222');
+set local role authenticated;
+select tests.verifier(not public.je_suis_admin(), 'client : pas reconnu comme administratrice');
+select tests.verifier(
+  tests.lignes_touchees($$update public.profils set role = 'admin' where id = '22222222-2222-4222-8222-222222222222'$$) = 0,
+  'client : ne peut pas se donner le rôle administratrice');
+rollback;
+
+begin;
+set local role anon;
+select tests.doit_etre_refuse($$select public.je_suis_admin()$$, 'visiteur non connecté : refusé');
+rollback;
+
 \echo
 \echo 'TOUS LES TESTS SONT PASSÉS'

@@ -103,6 +103,11 @@
 
   function afficher(...elements) {
     contenu.replaceChildren(...elements.filter((e) => e !== null && e !== undefined && e !== false));
+    // Onglets trop larges pour un téléphone : on fait défiler jusqu'à l'onglet actif.
+    const ongletActif = contenu.querySelector(".onglet[aria-current='page']");
+    if (ongletActif && ongletActif.parentElement) {
+      ongletActif.parentElement.scrollLeft = Math.max(0, ongletActif.offsetLeft - ongletActif.parentElement.offsetLeft - 16);
+    }
     // Focus automatique seulement sur les écrans de connexion (pas sur les
     // fiches : sur téléphone, cela ouvrirait le clavier ou le calendrier).
     const premierChamp = contenu.querySelector(".onglets") ? null : contenu.querySelector("input");
@@ -598,6 +603,7 @@
     if (morceaux[0] === "rappels") return { nom: "rappels", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "import") return { nom: "import", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "examens") return { nom: "examens", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
+    if (morceaux[0] === "acces") return { nom: "acces" };
     if (morceaux[0] === "apprenant" && UUID.test(morceaux[1] || "")) return { nom: "apprenant", id: morceaux[1] };
     if (morceaux[0] === "preuves") return { nom: "preuves", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     return { nom: "accueil" };
@@ -619,7 +625,8 @@
       onglet("", "Tableau de bord", "accueil"),
       onglet("rappels", "À rappeler", "rappels"),
       onglet("examens", "Examens", "examens"),
-      onglet("prospection", "Prospection", "prospection"));
+      onglet("prospection", "Prospection", "prospection"),
+      onglet("acces", "Accès", "acces"));
   }
 
   function routeAdmin() {
@@ -632,6 +639,7 @@
     if (route.nom === "import") return ecranImport(route.id);
     if (route.nom === "examens") return ecranExamens(route.id);
     if (route.nom === "apprenant") return ecranApprenant(route.id);
+    if (route.nom === "acces") return ecranAcces();
     if (route.nom === "preuves") return route.id ? ecranPreuves(route.id) : ecranExamens(null);
     return accueilAdmin(etat.profil);
   }
@@ -2027,7 +2035,7 @@
 
     const [apprenant, appels] = await Promise.all([
       sb.from("apprenants")
-        .select("id, organisme_id, identifiant_externe, prenom, nom, telephone, email, parcours, date_inscription, avancement_pct, derniere_connexion, statut, date_dernier_contact, cree_le, date_examen, presence_examen, resultat_examen, organismes ( nom, seuil_vert_jours, seuil_orange_jours )")
+        .select("id, organisme_id, appelante_id, identifiant_externe, prenom, nom, telephone, email, parcours, date_inscription, avancement_pct, derniere_connexion, statut, date_dernier_contact, cree_le, date_examen, presence_examen, resultat_examen, organismes ( nom, seuil_vert_jours, seuil_orange_jours )")
         .eq("id", id).maybeSingle(),
       sb.from("appels")
         .select(peutNoter
@@ -2089,6 +2097,8 @@
       h("p", {}, resumeExamen),
       estAdmin ? editeurExamen(a, () => rafraichir("Examen enregistré.")) : null);
 
+    const blocConfie = estAdmin ? await blocConfieA(a, rafraichir) : null;
+
     const historique = appels.data.length
       ? h("ul", { class: "liste" }, appels.data.map((ap) =>
           ligneHistorique(ap, { peutSupprimer: estAdmin, apresSuppression: () => rafraichir("Appel supprimé.") })))
@@ -2134,9 +2144,187 @@
           historique),
 
         blocExamen,
+        blocConfie,
         blocStatut)
     );
     window.scrollTo(0, 0);
+  }
+
+  // ===========================================================================
+  // ACCÈS : comptes clients et appelantes (étape 7)
+  // ===========================================================================
+  //   #/acces   créer un compte, désactiver / réactiver, voir qui a accès à quoi
+  // La création passe par la fonction serveur « gerer-comptes ».
+  // ===========================================================================
+
+  function adresseSite() {
+    return /^https?:$/.test(window.location.protocol) ? window.location.origin + window.location.pathname : "https://emilierachas-morgan.github.io/fil-rouge-plateforme/";
+  }
+
+  function messageBienvenue(role, nom) {
+    const bonjour = nom ? `Bonjour ${nom.split(" ")[0]},` : "Bonjour,";
+    return role === "client"
+      ? `${bonjour}\n\nVotre espace de suivi Fil Rouge Apprenants est prêt. Vous y retrouvez vos apprenants, les comptes rendus d'appel, le suivi jusqu'à l'examen et votre dossier de preuves Qualiopi.\n\nPour vous connecter : ${adresseSite()}\nSaisissez votre adresse email, puis ouvrez le lien de connexion que vous recevrez (pensez à vérifier les courriers indésirables).\n\nÀ bientôt,\nÉmilie Rachas\nFil Rouge Apprenants`
+      : `${bonjour}\n\nTon accès à la plateforme Fil Rouge Apprenants est prêt. Tu y trouveras les apprenants qui te sont confiés et le bouton « Noter un appel ».\n\nPour te connecter : ${adresseSite()}\nSaisis ton adresse email, puis ouvre le lien de connexion reçu (vérifie les courriers indésirables).\n\nÀ bientôt,\nÉmilie`;
+  }
+
+  async function copier(texte, bouton) {
+    try {
+      await navigator.clipboard.writeText(texte);
+      const avant = bouton.textContent;
+      bouton.textContent = "Copié ✓";
+      setTimeout(() => { bouton.textContent = avant; }, 2000);
+    } catch (e) {
+      bouton.textContent = "Copie impossible : sélectionnez le texte";
+    }
+  }
+
+  async function ecranAcces(info) {
+    afficher(navigationAdmin("acces"), h("p", { class: "chargement" }, "Chargement des accès…"));
+
+    const [profils, organismes, confies] = await Promise.all([
+      sb.from("profils").select("id, email, nom_affiche, role, organisme_id, actif, cree_le").order("cree_le"),
+      sb.from("organismes").select("id, nom, organismes_suivi_commercial ( etape )").order("nom"),
+      sb.from("apprenants").select("appelante_id").not("appelante_id", "is", null),
+    ]);
+    const erreur = profils.error || organismes.error || confies.error;
+    if (erreur) return afficher(navigationAdmin("acces"), message("erreur", texteErreur(erreur)));
+
+    const nomOrganisme = new Map(organismes.data.map((o) => [o.id, o.nom]));
+    const nbConfies = new Map();
+    for (const a of confies.data) nbConfies.set(a.appelante_id, (nbConfies.get(a.appelante_id) || 0) + 1);
+
+    // Les clients en premier dans la liste des organismes, puis les autres.
+    const estClient = (o) => (o.organismes_suivi_commercial?.etape || "prospect") === "client";
+    const choixOrganismes = Object.fromEntries([["", "— Choisir l'organisme —"],
+      ...organismes.data.filter(estClient).map((o) => [o.id, o.nom]),
+      ...organismes.data.filter((o) => !estClient(o)).map((o) => [o.id, `${o.nom} (pas encore client)`])]);
+
+    // --- Formulaire de création ---
+    const zone = h("div");
+    const zoneResultat = h("div");
+    const email = champTexte("acces-email", "Adresse email", "", { type: "email", inputmode: "email", autocomplete: "off", obligatoire: true });
+    const nom = champTexte("acces-nom", "Prénom et nom", "", { placeholder: "Ex. : Sophie Durand" });
+    const role = champChoix("acces-role", "Type de compte", { client: "Client (lecture seule)", appelante: "Appelante (renfort d'appels)" }, "client");
+    const organisme = champChoix("acces-organisme", "Organisme", choixOrganismes, "");
+    const blocOrganisme = h("div", {}, organisme.bloc);
+    const majRole = () => { blocOrganisme.hidden = role.champ.value !== "client"; };
+    role.champ.addEventListener("change", majRole);
+    majRole();
+    const bouton = h("button", { class: "bouton", type: "submit" }, "Créer le compte");
+    const formulaire = h("form", { class: "formulaire", novalidate: true }, email.bloc, nom.bloc, role.bloc, blocOrganisme, zone, bouton);
+
+    formulaire.addEventListener("submit", async (evenement) => {
+      evenement.preventDefault();
+      const adresse = email.champ.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(adresse)) return signaler(zone, "erreur", "Indiquez une adresse email valable.");
+      if (role.champ.value === "client" && !organisme.champ.value) return signaler(zone, "erreur", "Choisissez l'organisme de ce client.");
+      signaler(zone);
+      occupe(bouton, true, "Création…");
+      const { data, error } = await sb.functions.invoke("gerer-comptes", {
+        body: { action: "creer", email: adresse, nom_affiche: nom.champ.value.trim(), role: role.champ.value, organisme_id: organisme.champ.value || null },
+      });
+      occupe(bouton, false);
+      if (error) {
+        let texte = "Le compte n'a pas pu être créé. Réessayez dans un instant.";
+        try { const corps = await error.context.json(); if (corps && corps.erreur) texte = corps.erreur; } catch (e) { /* message par défaut */ }
+        return signaler(zone, "erreur", texte);
+      }
+      // Message prêt à envoyer à la personne.
+      const texteBienvenue = messageBienvenue(role.champ.value, nom.champ.value.trim());
+      const boutonCopier = h("button", { type: "button", class: "bouton bouton-secondaire bouton-petit" }, "Copier le message");
+      boutonCopier.addEventListener("click", () => copier(texteBienvenue, boutonCopier));
+      zoneResultat.replaceChildren(
+        h("div", { class: "carte carte-large pile pile-serree" },
+          h("p", { class: "message message-action" }, h("strong", {}, `Compte créé pour ${data.email}. `), "Envoyez-lui ce message :"),
+          h("p", { class: "texte-libre message-a-envoyer" }, texteBienvenue),
+          h("div", { class: "actions-ligne" },
+            boutonCopier,
+            h("a", { class: "bouton bouton-secondaire bouton-petit", href: `mailto:${data.email}?subject=${encodeURIComponent("Votre accès Fil Rouge Apprenants")}&body=${encodeURIComponent(texteBienvenue)}` }, "Ouvrir dans ma messagerie"))));
+      formulaire.reset();
+      majRole();
+      ecranAccesListe();
+    });
+
+    // --- Liste des comptes ---
+    const zoneListe = h("section", {});
+    async function ecranAccesListe() {
+      const { data, error } = await sb.from("profils").select("id, email, nom_affiche, role, organisme_id, actif, cree_le").order("cree_le");
+      if (error) return zoneListe.replaceChildren(message("erreur", texteErreur(error)));
+      dessinerListe(data);
+    }
+    function dessinerListe(liste) {
+      const autres = liste.filter((p) => p.id !== etat.profil.id);
+      const ligne = (p) => {
+        const zoneLigne = h("div");
+        const basculer = h("button", { type: "button", class: p.actif ? "bouton-lien bouton-lien-danger" : "bouton-lien" }, p.actif ? "Désactiver l'accès" : "Réactiver l'accès");
+        basculer.addEventListener("click", async () => {
+          occupe(basculer, true, "…");
+          const { error } = await sb.from("profils").update({ actif: !p.actif }).eq("id", p.id);
+          occupe(basculer, false);
+          if (error) return signaler(zoneLigne, "erreur", texteErreur(error));
+          ecranAccesListe();
+        });
+        const details = p.role === "client"
+          ? nomOrganisme.get(p.organisme_id) || "Organisme supprimé"
+          : pluriel(nbConfies.get(p.id) || 0, "apprenant confié", "apprenants confiés");
+        return h("li", { class: "ligne" },
+          h("span", { class: "ligne-titre" }, p.nom_affiche || p.email),
+          h("span", { class: "pastilles" },
+            pastille(p.role === "client" ? "neutre" : "orange", p.role === "client" ? "Client" : "Appelante"),
+            p.actif ? pastille("vert", "Actif") : pastille("rouge", "Désactivé")),
+          h("span", { class: "ligne-detail" }, [p.nom_affiche ? p.email : null, details].filter(Boolean).join(" · ")),
+          h("div", { class: "ligne-detail" }, basculer, zoneLigne));
+      };
+      zoneListe.replaceChildren(
+        h("div", { class: "section-titre" }, h("h2", {}, "Comptes existants"), h("p", {}, pluriel(autres.length, "compte", "comptes"))),
+        autres.length ? h("ul", { class: "liste" }, autres.map(ligne)) : message("info", "Aucun compte client ou appelante pour l'instant."),
+        h("p", { class: "aide" }, "Désactiver coupe l'accès immédiatement, sans rien effacer. Pour confier un apprenant à une appelante, ouvrez la fiche de l'apprenant."));
+    }
+    dessinerListe(profils.data);
+
+    afficher(
+      navigationAdmin("acces"),
+      h("div", { class: "pile" },
+        h("div", {},
+          h("p", { class: "surtitre" }, "Accès"),
+          h("h1", {}, "Comptes clients et appelantes"),
+          h("p", { class: "chapo" }, "Créez l'accès d'un client ou d'une appelante. Chacun ne voit que ce qui le concerne : le client, ses apprenants ; l'appelante, ceux que vous lui confiez.")),
+        info ? message("info", info) : null,
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Nouveau compte")),
+          h("div", { class: "carte carte-large" },
+            h("p", { class: "aide" }, "Rappel : aucune donnée réelle d'apprenant avant la signature du contrat de sous-traitance et de l'accord RGPD avec le client."),
+            formulaire)),
+        zoneResultat,
+        zoneListe)
+    );
+    window.scrollTo(0, 0);
+  }
+
+  // Bloc « Confié à » de la fiche apprenant (administratrice).
+  async function blocConfieA(apprenant, rafraichir) {
+    const { data, error } = await sb.from("profils").select("id, email, nom_affiche").eq("role", "appelante").eq("actif", true).order("nom_affiche");
+    if (error) return message("erreur", texteErreur(error));
+    const choix = Object.fromEntries([["", "Moi (personne d'autre)"], ...data.map((p) => [p.id, p.nom_affiche || p.email])]);
+    if (apprenant.appelante_id && !(apprenant.appelante_id in choix)) choix[apprenant.appelante_id] = "Appelante désactivée";
+    const zone = h("div");
+    const champ = champChoix("fiche-appelante", "Appels assurés par", choix, apprenant.appelante_id || "");
+    const bouton = h("button", { type: "submit", class: "bouton bouton-secondaire bouton-petit" }, "Enregistrer");
+    const formulaire = h("form", { class: "formulaire", novalidate: true }, champ.bloc, zone, bouton);
+    formulaire.addEventListener("submit", async (evenement) => {
+      evenement.preventDefault();
+      occupe(bouton, true, "Enregistrement…");
+      const { error: erreurMaj } = await sb.from("apprenants").update({ appelante_id: champ.champ.value || null }).eq("id", apprenant.id);
+      occupe(bouton, false);
+      if (erreurMaj) return signaler(zone, "erreur", texteErreur(erreurMaj));
+      rafraichir("Suivi attribué.");
+    });
+    return h("section", {},
+      h("div", { class: "section-titre" }, h("h2", {}, "Qui appelle cet apprenant ?")),
+      h("div", { class: "carte carte-large" },
+        data.length ? null : h("p", { class: "aide" }, "Aucune appelante pour l'instant. Créez son compte dans l'onglet Accès."),
+        formulaire));
   }
 
   async function accueilClient(profil) {
