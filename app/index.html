@@ -20,7 +20,17 @@
 <body>
   <header class="bandeau">
     <div class="bandeau-interieur">
-      <p class="marque"><span class="marque-fil" aria-hidden="true"></span>Fil Rouge <span class="marque-sous">Apprenants</span></p>
+      <button id="bouton-menu" class="bouton-menu" type="button" aria-controls="menu-lateral" aria-expanded="false" hidden>
+        <span class="bouton-menu-traits" aria-hidden="true"></span>Menu
+      </button>
+      <p class="marque">
+        <span class="marque-texte">Fil Rouge <span class="marque-sous">Apprenants</span></span>
+        <!-- Le fil rouge : un seul trait fin qui fait le tour du nom. -->
+        <svg class="marque-fil" viewBox="0 0 320 64" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <path d="M4 50 C 22 52, 30 44, 44 40 C 70 10, 170 2, 262 8 C 300 11, 316 24, 312 36 C 306 52, 250 60, 160 60 C 92 60, 30 57, 16 46 C 4 36, 10 16, 34 7"
+                fill="none" stroke="#c1121f" stroke-width="1.4" stroke-linecap="round" vector-effect="non-scaling-stroke" pathLength="1"/>
+        </svg>
+      </p>
       <div id="zone-compte" class="zone-compte" hidden>
         <span id="compte-libelle" class="compte-libelle"></span>
         <button id="bouton-deconnexion" class="bouton-lien" type="button">Se déconnecter</button>
@@ -28,9 +38,13 @@
     </div>
   </header>
 
-  <main id="contenu" class="contenu" aria-live="polite">
-    <p class="chargement">Chargement…</p>
-  </main>
+  <div class="cadre">
+    <nav id="menu-lateral" class="menu-lateral" aria-label="Navigation" hidden></nav>
+    <main id="contenu" class="contenu" aria-live="polite">
+      <p class="chargement">Chargement…</p>
+    </main>
+  </div>
+  <div id="voile" class="voile" hidden></div>
 
   <footer class="pied">
     <p>Fil Rouge Apprenants · accompagnement anti-décrochage à distance · données hébergées en France</p>

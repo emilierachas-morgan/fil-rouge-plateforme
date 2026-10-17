@@ -1,6 +1,7 @@
 /* =============================================================================
    Fil Rouge Apprenants — feuille de style
-   Identité : rouge sur blanc, filets fins, aucun aplat foncé.
+   Identité : fond blanc, filets violet foncé et rose clair, texte noir ; un
+   seul fil rouge, autour du nom. Aucun aplat foncé.
    Mise en page : une colonne étroite et lisible, cartes seulement pour les
    blocs d'action ; les listes sont séparées par des filets.
    ============================================================================= */
@@ -8,14 +9,18 @@
 :root {
   color-scheme: only light;
 
-  /* Couleurs */
+  /* Couleurs : fond blanc, filets violet foncé et rose clair, texte noir.
+     Le rouge est réservé au fil qui entoure le nom « Fil Rouge Apprenants ». */
   --fond: #ffffff;
-  --fond-doux: #fbf7f7;        /* blanc à peine rosé pour les zones secondaires */
-  --texte: #2a1f21;
-  --texte-doux: #6f6265;
-  --rouge: #b3172f;            /* le fil rouge */
-  --rouge-clair: #f6e3e6;
-  --filet: #ead9dc;
+  --fond-doux: #fdf6f9;        /* blanc à peine rosé pour les zones secondaires */
+  --texte: #000000;
+  --texte-doux: #5c5463;
+  --violet: #3b1f5c;           /* violet foncé : filets forts, liens, état actif */
+  --violet-moyen: #6a4592;
+  --rose: #f8e1eb;             /* rose clair : survol, sélection, boutons */
+  --rose-fort: #f1c9da;
+  --filet: #ecd3df;            /* filet rose clair entre les lignes */
+  --fil: #c1121f;              /* le fil rouge, uniquement autour du nom */
 
   /* Couleurs d'alerte (sémantiques, distinctes du rouge de marque) */
   --alerte-vert: #2e7d4f;
@@ -87,16 +92,7 @@ body {
   color: var(--texte);
 }
 
-.marque-sous { color: var(--rouge); }
-
-/* Le fil : un trait rouge fin qui ondule légèrement */
-.marque-fil {
-  width: 1.6rem;
-  height: 0.7rem;
-  background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 14'%3E%3Cpath d='M1 9 C 8 1, 12 13, 18 6 S 27 3, 31 7' fill='none' stroke='%23b3172f' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-}
+.marque-sous { color: var(--violet); }
 
 .zone-compte {
   display: flex;
@@ -131,7 +127,7 @@ h2 { font-size: 1.45rem; line-height: 1.2; }
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--rouge);
+  color: var(--violet);
 }
 
 .chapo {
@@ -185,7 +181,7 @@ input.code {
 
 input:focus-visible,
 button:focus-visible {
-  outline: 2px solid var(--rouge);
+  outline: 2px solid var(--violet);
   outline-offset: 2px;
 }
 
@@ -194,13 +190,14 @@ button:focus-visible {
   font-weight: 700;
   padding: 0.75rem 1rem;
   border-radius: var(--rayon);
-  border: 1px solid var(--rouge);
-  background: var(--rouge);
-  color: #ffffff;
+  border: 1px solid var(--violet);
+  background: var(--rose);
+  color: var(--violet);
   cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-.bouton:hover { background: #9b1428; }
+.bouton:hover { background: var(--rose-fort); }
 .bouton:disabled { opacity: 0.55; cursor: wait; }
 
 .bouton-lien {
@@ -208,7 +205,7 @@ button:focus-visible {
   background: none;
   border: none;
   padding: 0;
-  color: var(--rouge);
+  color: var(--violet);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
@@ -272,7 +269,7 @@ button:focus-visible {
 .bandeau-demo {
   margin: 0;
   padding: 0.55rem 0.8rem;
-  border-left: 3px solid var(--rouge);
+  border-left: 3px solid var(--violet);
   background: var(--fond-doux);
   font-size: 0.88rem;
   color: var(--texte-doux);
@@ -395,14 +392,14 @@ button:focus-visible {
   white-space: nowrap;
 }
 
-.onglet[aria-current="page"] { color: var(--rouge); border-bottom-color: var(--rouge); }
+.onglet[aria-current="page"] { color: var(--violet); border-bottom-color: var(--violet); }
 
 .lien-interne { color: inherit; text-decoration: none; }
-.lien-interne:hover { color: var(--rouge); text-decoration: underline; text-underline-offset: 3px; }
-.surtitre .lien-interne { color: var(--rouge); }
+.lien-interne:hover { color: var(--violet); text-decoration: underline; text-underline-offset: 3px; }
+.surtitre .lien-interne { color: var(--violet); }
 
 a:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 2px solid var(--rouge);
+  outline: 2px solid var(--violet);
   outline-offset: 2px;
 }
 
@@ -418,17 +415,17 @@ a:focus-visible, select:focus-visible, textarea:focus-visible {
 
 a.bouton { display: inline-block; text-decoration: none; text-align: center; }
 .bouton-petit { padding: 0.55rem 0.9rem; font-size: 0.92rem; }
-.bouton-secondaire { background: var(--fond); color: var(--rouge); }
-.bouton-secondaire:hover { background: var(--rouge-clair); }
-.bouton-danger { background: var(--alerte-rouge); border-color: var(--alerte-rouge); }
+.bouton-secondaire { background: var(--fond); color: var(--violet); }
+.bouton-secondaire:hover { background: var(--rose); }
+.bouton-danger { background: var(--alerte-rouge-fond); border-color: var(--alerte-rouge); color: var(--alerte-rouge); }
 .bouton-lien-danger { color: var(--alerte-rouge); }
 
 .message-action {
-  background: var(--rouge-clair);
+  background: var(--rose);
   color: var(--texte);
-  border-left: 3px solid var(--rouge);
+  border-left: 3px solid var(--violet);
 }
-.message-action a { color: var(--rouge); font-weight: 700; }
+.message-action a { color: var(--violet); font-weight: 700; }
 
 .filtres {
   display: flex;
@@ -449,7 +446,7 @@ a.bouton { display: inline-block; text-decoration: none; text-align: center; }
   font-size: 0.88rem;
 }
 
-.filtre[aria-current="true"] { border-color: var(--rouge); color: var(--rouge); background: var(--rouge-clair); font-weight: 700; }
+.filtre[aria-current="true"] { border-color: var(--violet); color: var(--violet); background: var(--rose); font-weight: 700; }
 .filtre-nombre { font-variant-numeric: tabular-nums; color: var(--texte-doux); }
 
 .relance { color: var(--texte-doux); }
@@ -501,7 +498,7 @@ textarea { resize: vertical; min-height: 5.5rem; }
   cursor: pointer;
 }
 
-.puce:hover { border-color: var(--rouge); color: var(--rouge); }
+.puce:hover { border-color: var(--violet); color: var(--violet); }
 
 .texte-libre { white-space: pre-wrap; color: var(--texte); }
 
@@ -521,15 +518,16 @@ html.affichage-redresse { filter: invert(1) hue-rotate(180deg) brightness(1.08);
 .pied .bouton-lien { font-size: 0.8rem; }
 /* Boutons pleins : en mode redressé, contour rouge sur fond blanc (rendu net). */
 html.affichage-redresse .bouton,
-html.affichage-redresse .bouton:hover { background: #ffffff; color: var(--rouge); border-width: 2px; }
+html.affichage-redresse .bouton:hover { background: #ffffff; color: var(--violet); border-width: 2px; }
+html.affichage-redresse .marque-fil path { stroke: #3ee6d9; } /* redevient rouge une fois l'inversion appliquée */
 html.affichage-redresse .bouton-danger { color: var(--alerte-rouge); }
 
 /* ---------- Étape 4 : liste à rappeler et import ---------- */
 
 .lien-suite { margin: -0.75rem 0 0; font-size: 0.92rem; }
-.lien-suite a, .ligne-detail .lien-interne { color: var(--rouge); }
+.lien-suite a, .ligne-detail .lien-interne { color: var(--violet); }
 
-.telephone a { color: var(--rouge); font-weight: 700; text-decoration: none; white-space: nowrap; }
+.telephone a { color: var(--violet); font-weight: 700; text-decoration: none; white-space: nowrap; }
 
 .actions-ligne { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
@@ -545,7 +543,7 @@ input[type="file"] { font: inherit; font-weight: 400; max-width: 100%; }
 .tableau-defilant { overflow-x: auto; border: 1px solid var(--filet); border-radius: var(--rayon); }
 .tableau { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 .tableau th, .tableau td { padding: 0.45rem 0.6rem; text-align: left; border-bottom: 1px solid var(--filet); white-space: nowrap; }
-.tableau th { color: var(--rouge); font-weight: 700; background: var(--fond-doux); }
+.tableau th { color: var(--violet); font-weight: 700; background: var(--fond-doux); }
 .tableau tr:last-child td { border-bottom: none; }
 
 .liste-erreurs { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; }
@@ -572,11 +570,11 @@ h3 { font-size: 1.05rem; margin: 0.4rem 0 0; color: var(--texte); }
 .editeur-examen > div { grid-column: 1 / -1; }
 @media (max-width: 34rem) { .editeur-examen { grid-template-columns: minmax(0, 1fr); } }
 
-.depliant > summary { cursor: pointer; color: var(--rouge); font-weight: 700; margin-bottom: 0.6rem; }
+.depliant > summary { cursor: pointer; color: var(--violet); font-weight: 700; margin-bottom: 0.6rem; }
 
 /* ---------- Dossier de preuves Qualiopi ---------- */
 
-.dossier { display: flex; flex-direction: column; gap: 1.75rem; border-top: 2px solid var(--rouge); padding-top: 1.25rem; }
+.dossier { display: flex; flex-direction: column; gap: 1.75rem; border-top: 2px solid var(--violet); padding-top: 1.25rem; }
 .dossier section { display: flex; flex-direction: column; gap: 0.75rem; }
 .dossier section > p { margin: 0; }
 .dossier-pied { border-top: 1px solid var(--filet); padding-top: 0.75rem; }
@@ -585,11 +583,12 @@ h3 { font-size: 1.05rem; margin: 0.4rem 0 0; color: var(--texte); }
   @page { size: A4; margin: 14mm 12mm; }
   html.affichage-redresse { filter: none; }
   body { font-size: 10pt; display: block; }
-  .bandeau, .pied, .onglets, .masque-impression, .actions-impression { display: none !important; }
+  .bandeau, .pied, .onglets, .menu-lateral, .voile, .masque-impression, .actions-impression { display: none !important; }
+  .cadre { display: block !important; }
   .contenu { max-width: none; padding: 0; }
   .dossier { border-top: none; padding-top: 0; gap: 1rem; }
   .dossier section { break-inside: auto; }
-  .dossier h2 { break-after: avoid; color: var(--rouge); font-size: 14pt; }
+  .dossier h2 { break-after: avoid; color: var(--violet); font-size: 14pt; }
   .tableau-defilant { overflow: visible; border: none; }
   .tableau { font-size: 8.5pt; }
   .tableau tr { break-inside: avoid; }
@@ -614,8 +613,8 @@ h3 { font-size: 1.05rem; margin: 0.4rem 0 0; color: var(--texte); }
   background: var(--fond);
   cursor: pointer;
 }
-.choix-bouton input:checked + span { border-color: var(--rouge); color: var(--rouge); background: var(--rouge-clair); box-shadow: inset 0 0 0 1px var(--rouge); }
-.choix-bouton input:focus-visible + span { outline: 2px solid var(--rouge); outline-offset: 2px; }
+.choix-bouton input:checked + span { border-color: var(--violet); color: var(--violet); background: var(--rose); box-shadow: inset 0 0 0 1px var(--violet); }
+.choix-bouton input:focus-visible + span { outline: 2px solid var(--violet); outline-offset: 2px; }
 
 .note-interne {
   border: 1px dashed var(--filet);
@@ -641,3 +640,253 @@ h3 { font-size: 1.05rem; margin: 0.4rem 0 0; color: var(--texte); }
 .onglets { overflow-x: auto; scrollbar-width: none; }
 .onglet { white-space: nowrap; }
 @media (max-width: 34rem) { .onglets { gap: 1.1rem; } .onglet { font-size: 0.92rem; } }
+
+
+/* =============================================================================
+   Étape 9 : nouvel habillage — le fil rouge autour du nom, menu latéral
+   ============================================================================= */
+
+/* ---------- Le nom et son fil ---------- */
+
+.bandeau { border-bottom: 1px solid var(--violet); }
+
+.marque {
+  position: relative;
+  display: inline-block;
+  padding: 0.85rem 1.7rem 0.95rem 1.9rem;
+  font-size: 1.55rem;
+  letter-spacing: 0.01em;
+}
+.marque-texte { position: relative; z-index: 1; color: var(--texte); }
+.marque-sous { color: var(--violet); font-style: italic; }
+.marque-fil {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Un seul geste animé dans toute l'application : le fil se dessine à l'ouverture. */
+@media (prefers-reduced-motion: no-preference) {
+  .marque-fil path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: fil-dessine 1.4s cubic-bezier(.45,.05,.25,1) 0.15s forwards; }
+  @keyframes fil-dessine { to { stroke-dashoffset: 0; } }
+}
+
+.bandeau-interieur { max-width: none; padding-block: calc(0.4rem + env(safe-area-inset-top, 0px)) 0.4rem; }
+.zone-compte { margin-left: auto; }
+
+/* ---------- Bouton « Menu » (téléphone et tablette) ---------- */
+
+.bouton-menu {
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.92rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--violet);
+  border-radius: 999px;
+  background: var(--fond);
+  color: var(--violet);
+  cursor: pointer;
+}
+.bouton-menu-traits, .bouton-menu-traits::before, .bouton-menu-traits::after {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  background: var(--violet);
+  border-radius: 2px;
+  position: relative;
+}
+.bouton-menu-traits::before, .bouton-menu-traits::after { content: ""; position: absolute; left: 0; }
+.bouton-menu-traits::before { top: -4.5px; }
+.bouton-menu-traits::after { top: 4.5px; }
+.bouton-menu:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+
+/* ---------- Mise en page avec menu ---------- */
+
+.cadre { flex: 1; display: flex; flex-direction: column; }
+.contenu { flex: 1; }
+
+.menu-lateral {
+  font-size: 0.95rem;
+  background: var(--fond);
+  padding: 1rem 0.75rem 2rem;
+  overflow-y: auto;
+}
+
+/* Téléphone : volet qui glisse depuis la gauche */
+@media (max-width: 63.99rem) {
+  .menu-lateral {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(20rem, 86vw);
+    border-right: 1px solid var(--violet);
+    padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+    transform: translateX(-102%);
+    visibility: hidden;
+    transition: transform 220ms ease, visibility 0s linear 220ms;
+  }
+  body.menu-ouvert .menu-lateral { transform: none; visibility: visible; transition: transform 220ms ease; }
+  .voile { position: fixed; inset: 0; z-index: 20; background: rgba(59, 31, 92, 0.18); }
+}
+
+/* Ordinateur : colonne fixe à gauche, le menu est toujours là */
+@media (min-width: 64rem) {
+  .bouton-menu { display: none !important; }
+  .voile { display: none !important; }
+  body.avec-menu .cadre {
+    display: grid;
+    grid-template-columns: 17.5rem minmax(0, 1fr);
+    align-items: start;
+  }
+  body.avec-menu .menu-lateral {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    border-right: 1px solid var(--violet);
+    min-height: calc(100vh - 4.5rem);
+  }
+  body.avec-menu .contenu { max-width: 54rem; margin: 0; padding-left: 2.75rem; padding-right: 2rem; }
+}
+@media (prefers-reduced-motion: reduce) { .menu-lateral { transition: none !important; } }
+
+/* ---------- Entrées du menu ---------- */
+
+.menu-haut { display: flex; flex-direction: column; gap: 2px; padding-bottom: 0.75rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--filet); }
+
+.menu-lien {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--rayon);
+  color: var(--texte);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  line-height: 1.3;
+}
+.menu-lien:hover { background: var(--rose); }
+.menu-lien[aria-current="page"] { background: var(--rose); border-left-color: var(--violet); color: var(--violet); font-weight: 700; }
+.menu-texte { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.55rem; overflow-wrap: anywhere; }
+
+.menu-nombre {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--texte-doux);
+  border: 1px solid var(--filet);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  line-height: 1.5;
+}
+.menu-nombre-alerte { color: var(--alerte-rouge); border-color: var(--alerte-rouge-fond); background: var(--alerte-rouge-fond); font-weight: 700; }
+
+.menu-groupe { border-bottom: 1px solid var(--filet); }
+.menu-groupe > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.7rem;
+  font-family: var(--police-titre);
+  font-size: 1.2rem;
+  color: var(--violet);
+  border-radius: var(--rayon);
+}
+.menu-groupe > summary::-webkit-details-marker { display: none; }
+.menu-groupe > summary::after {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 1.5px solid var(--violet);
+  border-bottom: 1.5px solid var(--violet);
+  transform: rotate(-45deg);
+  transition: transform 180ms ease;
+  margin-right: 0.2rem;
+}
+.menu-groupe[open] > summary::after { transform: rotate(45deg); }
+.menu-groupe > summary:hover { background: var(--fond-doux); }
+.menu-groupe > summary:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+.menu-sous { display: flex; flex-direction: column; gap: 2px; padding: 0 0 0.75rem 0.6rem; margin-left: 0.7rem; border-left: 1px solid var(--rose-fort); }
+.menu-sous .menu-lien { font-size: 0.92rem; padding-block: 0.4rem; }
+.menu-liste { display: flex; flex-direction: column; gap: 2px; margin-top: 0.3rem; padding-top: 0.3rem; border-top: 1px dashed var(--filet); }
+.menu-vide { margin: 0.2rem 0.7rem 0.4rem; font-size: 0.85rem; color: var(--texte-doux); }
+@media (prefers-reduced-motion: no-preference) {
+  .menu-groupe[open] > .menu-sous { animation: deplie 160ms ease-out; }
+  @keyframes deplie { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+}
+
+/* Icône de dossier : deux filets violets, sans aplat */
+.icone-dossier {
+  flex: none;
+  position: relative;
+  width: 15px;
+  height: 11px;
+  border: 1.5px solid var(--violet);
+  border-radius: 2px;
+  margin-top: 2px;
+  background: var(--fond);
+}
+.icone-dossier::before {
+  content: "";
+  position: absolute;
+  left: -1.5px;
+  top: -4.5px;
+  width: 7px;
+  height: 3px;
+  border: 1.5px solid var(--violet);
+  border-bottom: none;
+  border-radius: 2px 2px 0 0;
+}
+.menu-lien[aria-current="page"] .icone-dossier { background: var(--rose-fort); }
+.icone-dossier-grande { width: 30px; height: 22px; border-width: 2px; margin-top: 0.7rem; }
+.icone-dossier-grande::before { width: 13px; height: 6px; top: -8px; left: -2px; border-width: 2px; }
+
+/* ---------- Dossier élèves et coaching ---------- */
+
+.entete-dossier { display: flex; gap: 1rem; align-items: flex-start; }
+.recherche {
+  font: inherit;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--violet);
+  border-radius: 999px;
+  margin-bottom: 0.8rem;
+  background: var(--fond);
+  color: var(--texte);
+}
+.recherche:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+button.filtre { font: inherit; font-size: 0.88rem; background: var(--fond); cursor: pointer; }
+.filtre[aria-pressed="true"] { border-color: var(--violet); color: var(--violet); background: var(--rose); font-weight: 700; }
+.choix-dossier { max-width: 22rem; }
+.section-repliee > summary { font-family: var(--police-titre); font-weight: 400; font-size: 1.2rem; }
+.partie-coaching { border-top: 1px solid var(--filet); padding-top: 0.6rem; }
+.partie-coaching > summary { font-family: var(--police-titre); font-weight: 400; font-size: 1.25rem; color: var(--violet); }
+.partie-coaching > .formulaire { padding: 0.25rem 0 0.5rem; }
+input[type="number"], input[type="search"] { font: inherit; }
+input[type="number"] {
+  font-weight: 400;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  background: var(--fond);
+  color: var(--texte);
+  width: 100%;
+}
+.resume-coaching { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.5rem 1.25rem; margin: 0; }
+.resume-coaching dt { font-weight: 700; color: var(--violet); }
+.resume-coaching dd { margin: 0; }
+
+/* Champs : filet violet au survol et à la saisie */
+input:hover, select:hover, textarea:hover { border-color: var(--rose-fort); }
+input:focus, select:focus, textarea:focus { border-color: var(--violet); }
+
+/* Titres de section : un filet violet fin dessous */
+.section-titre { border-bottom: 1px solid var(--violet); padding-bottom: 0.35rem; }
+.liste { border-top: none; }

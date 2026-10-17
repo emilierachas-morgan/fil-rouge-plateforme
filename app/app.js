@@ -94,7 +94,7 @@
         el.setAttribute(cle, String(valeur));
       }
     }
-    for (const enfant of enfants.flat()) {
+    for (const enfant of enfants.flat(Infinity)) {
       if (enfant === null || enfant === undefined || enfant === false) continue;
       el.append(enfant instanceof Node ? enfant : document.createTextNode(String(enfant)));
     }
@@ -102,6 +102,12 @@
   }
 
   function afficher(...elements) {
+    // Menu latéral : seulement pour l'administratrice connectée.
+    const avecMenu = menuVisible();
+    document.body.classList.toggle("avec-menu", avecMenu);
+    menu.hidden = !avecMenu;
+    boutonMenu.hidden = !avecMenu;
+    if (!avecMenu) ouvrirMenu(false);
     contenu.replaceChildren(...elements.filter((e) => e !== null && e !== undefined && e !== false));
     // Onglets trop larges pour un téléphone : on fait défiler jusqu'à l'onglet actif.
     const ongletActif = contenu.querySelector(".onglet[aria-current='page']");
@@ -606,6 +612,8 @@
     if (morceaux[0] === "acces") return { nom: "acces" };
     if (morceaux[0] === "apprenant" && UUID.test(morceaux[1] || "")) return { nom: "apprenant", id: morceaux[1] };
     if (morceaux[0] === "preuves") return { nom: "preuves", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
+    if (morceaux[0] === "eleves" && UUID.test(morceaux[1] || "")) return { nom: "eleves", id: morceaux[1] };
+    if (morceaux[0] === "coaching") return { nom: "coaching", type: morceaux[1] || "stage", id: UUID.test(morceaux[2] || "") ? morceaux[2] : null };
     return { nom: "accueil" };
   }
 
@@ -618,20 +626,19 @@
     return h("a", { href: `#/${chemin}`, class: "lien-interne" }, ...enfants);
   }
 
-  function navigationAdmin(actif) {
-    const onglet = (chemin, texte, cle) =>
-      h("a", { href: `#/${chemin}`, class: "onglet", "aria-current": actif === cle ? "page" : null }, texte);
-    return h("nav", { class: "onglets", "aria-label": "Sections" },
-      onglet("", "Tableau de bord", "accueil"),
-      onglet("rappels", "À rappeler", "rappels"),
-      onglet("examens", "Examens", "examens"),
-      onglet("prospection", "Prospection", "prospection"),
-      onglet("acces", "Accès", "acces"));
+  // Les onglets du haut sont remplacés par le menu latéral (étape 9) :
+  // cette fonction reste pour les écrans existants et ne dessine plus rien.
+  function navigationAdmin() {
+    return null;
   }
 
   function routeAdmin() {
     if (!etat.profil || etat.profil.role !== "admin") return aiguiller();
     const route = lireRoute();
+    etat.dossierActif = null;
+    chargerMenu();
+    if (route.nom === "eleves") return ecranDossierEleves(route.id);
+    if (route.nom === "coaching") return ecranCoaching(route.type, route.id);
     if (route.nom === "prospection") return ecranProspection(route.etape);
     if (route.nom === "nouveau") return ecranNouvelOrganisme();
     if (route.nom === "organisme") return ecranOrganisme(route.id);
@@ -2130,7 +2137,7 @@
     const entete = () => (estAdmin ? [navigationAdmin("rappels")] : []);
     afficher(...entete(), h("p", { class: "chargement" }, "Chargement de la fiche…"));
 
-    const [apprenant, appels] = await Promise.all([
+    const [apprenant, appels, coaching] = await Promise.all([
       sb.from("apprenants")
         .select("id, organisme_id, appelante_id, identifiant_externe, prenom, nom, telephone, email, parcours, date_inscription, avancement_pct, derniere_connexion, statut, date_dernier_contact, cree_le, date_examen, presence_examen, resultat_examen, organismes ( nom, seuil_vert_jours, seuil_orange_jours )")
         .eq("id", id).maybeSingle(),
@@ -2139,16 +2146,18 @@
           ? "id, date_appel, canal, resultat, note_client, prochaine_action, date_prochaine_action, auteur_id, notes_internes ( contenu )"
           : "id, date_appel, canal, resultat, note_client, prochaine_action, date_prochaine_action")
         .eq("apprenant_id", id).order("date_appel", { ascending: false }).order("id"),
+      sb.from("coaching").select("*").eq("apprenant_id", id).maybeSingle(),
     ]);
-    const erreur = apprenant.error || appels.error;
+    const erreur = apprenant.error || appels.error || coaching.error;
     if (erreur) return afficher(...entete(), message("erreur", texteErreur(erreur)));
-    const retourParDefaut = estAdmin ? "rappels" : "";
+    const retourParDefaut = estAdmin ? (apprenant.data ? `eleves/${apprenant.data.organisme_id}` : "rappels") : "";
     if (!apprenant.data) {
       return afficher(...entete(), message("info", "Cette fiche n'existe pas ou ne vous est pas accessible."), lienInterne(retourParDefaut, "← Retour à la liste"));
     }
 
     const a = apprenant.data;
     const org = a.organismes || {};
+    if (estAdmin) { etat.dossierActif = a.organisme_id; marquerActif(); }
     const rafraichir = (texte) => ecranApprenant(id, texte);
 
     // Jours sans contact et couleur, comme dans « Qui rappeler ».
@@ -2236,6 +2245,7 @@
           h("div", { class: "section-titre" }, h("h2", {}, "Historique des appels"), h("p", {}, pluriel(appels.data.length, "appel", "appels"))),
           historique),
 
+        blocCoaching(a, coaching.data, peutNoter, (texte) => rafraichir(texte)),
         blocExamen,
         blocConfie,
         blocStatut)
@@ -2481,6 +2491,432 @@
     );
   }
 
+  // ===========================================================================
+  // MENU LATÉRAL (administratrice, étape 9)
+  // ===========================================================================
+  // Sur ordinateur : colonne à gauche, toujours visible. Sur téléphone : volet
+  // qui s'ouvre avec le bouton « Menu ». Groupes dépliables :
+  //   Prospects · Clients · Élèves (un dossier par client) · Coaching
+  // Les groupes ouverts sont retenus dans ce navigateur (simple confort).
+  // ===========================================================================
+
+  const menu = document.getElementById("menu-lateral");
+  const boutonMenu = document.getElementById("bouton-menu");
+  const voile = document.getElementById("voile");
+  const CLE_GROUPES = "filrouge.menu.groupes";
+  let signatureMenu = "";
+
+  function lireGroupesOuverts() {
+    try {
+      const v = JSON.parse(localStorage.getItem(CLE_GROUPES) || "null");
+      return Array.isArray(v) ? v : ["eleves", "coaching"];
+    } catch (e) {
+      return ["eleves", "coaching"];
+    }
+  }
+  function memoriserGroupes() {
+    try {
+      localStorage.setItem(CLE_GROUPES, JSON.stringify([...menu.querySelectorAll("details[open]")].map((d) => d.dataset.groupe)));
+    } catch (e) { /* confort seulement */ }
+  }
+
+  function ouvrirMenu(ouvert) {
+    document.body.classList.toggle("menu-ouvert", ouvert);
+    boutonMenu.setAttribute("aria-expanded", String(ouvert));
+    voile.hidden = !ouvert;
+  }
+  boutonMenu.addEventListener("click", () => ouvrirMenu(!document.body.classList.contains("menu-ouvert")));
+  voile.addEventListener("click", () => ouvrirMenu(false));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") ouvrirMenu(false); });
+  menu.addEventListener("click", (e) => { if (e.target.closest("a")) ouvrirMenu(false); });
+
+  function menuVisible() {
+    return Boolean(etat.profil && etat.profil.role === "admin" && !zoneCompte.hidden);
+  }
+
+  function etapeDe(o) {
+    const s = Array.isArray(o.organismes_suivi_commercial) ? o.organismes_suivi_commercial[0] : o.organismes_suivi_commercial;
+    return (s && s.etape) || "prospect";
+  }
+
+  async function chargerMenu() {
+    if (!menuVisible()) return;
+    const [orgs, appr, urgents] = await Promise.all([
+      sb.from("organismes").select("id, nom, organismes_suivi_commercial ( etape )").order("nom"),
+      sb.from("apprenants").select("organisme_id, statut"),
+      sb.from("vue_qui_rappeler").select("id").eq("alerte", "rouge"),
+    ]);
+    if (orgs.error || appr.error || urgents.error) return;
+    const total = new Map();
+    const actifs = new Map();
+    for (const a of appr.data) {
+      total.set(a.organisme_id, (total.get(a.organisme_id) || 0) + 1);
+      if (a.statut === "actif") actifs.set(a.organisme_id, (actifs.get(a.organisme_id) || 0) + 1);
+    }
+    const donnees = {
+      prospects: orgs.data.filter((o) => !["client", "perdu"].includes(etapeDe(o))).map((o) => ({ id: o.id, nom: o.nom })),
+      clients: orgs.data.filter((o) => etapeDe(o) === "client").map((o) => ({ id: o.id, nom: o.nom })),
+      // Un dossier par client, et par organisme qui a déjà des élèves (test gratuit).
+      dossiers: orgs.data.filter((o) => etapeDe(o) === "client" || total.has(o.id)).map((o) => ({ id: o.id, nom: o.nom, n: actifs.get(o.id) || 0 })),
+      urgents: urgents.data.length,
+    };
+    const signature = JSON.stringify(donnees);
+    if (signature !== signatureMenu) {
+      signatureMenu = signature;
+      dessinerMenu(donnees);
+    }
+    marquerActif();
+  }
+
+  function dessinerMenu(d) {
+    const ouverts = new Set(lireGroupesOuverts());
+    const lien = (chemin, texte, extra) =>
+      h("a", { href: `#/${chemin}`, class: "menu-lien", "data-chemin": chemin }, h("span", { class: "menu-texte" }, texte), extra || null);
+    const nombre = (n, alerte) => h("span", { class: alerte ? "menu-nombre menu-nombre-alerte" : "menu-nombre" }, String(n));
+    const vide = (texte) => h("p", { class: "menu-vide" }, texte);
+    const groupe = (cle, titre, enfants) => {
+      const g = h("details", { class: "menu-groupe", "data-groupe": cle },
+        h("summary", {}, h("span", {}, titre)),
+        h("div", { class: "menu-sous" }, enfants));
+      g.open = ouverts.has(cle);
+      g.addEventListener("toggle", memoriserGroupes);
+      return g;
+    };
+
+    menu.replaceChildren(
+      h("div", { class: "menu-haut" },
+        lien("", "Tableau de bord"),
+        lien("rappels", "À rappeler", d.urgents ? nombre(d.urgents, true) : null)),
+      groupe("prospects", "Prospects", [
+        lien("prospection", "Tous les centres à démarcher"),
+        lien("nouveau", "Ajouter un centre"),
+        d.prospects.length ? h("div", { class: "menu-liste" }, d.prospects.map((o) => lien(`organisme/${o.id}`, o.nom))) : vide("Aucun centre en cours."),
+      ]),
+      groupe("clients", "Clients", [
+        d.clients.length ? d.clients.map((o) => lien(`organisme/${o.id}`, o.nom)) : vide("Pas encore de client signé."),
+        lien("acces", "Comptes d'accès"),
+      ]),
+      groupe("eleves", "Élèves", [
+        d.dossiers.length
+          ? d.dossiers.map((o) => lien(`eleves/${o.id}`, [h("span", { class: "icone-dossier", "aria-hidden": "true" }), o.nom], nombre(o.n)))
+          : vide("Les dossiers apparaissent dès qu'un client a des élèves."),
+      ]),
+      groupe("coaching", "Coaching", [
+        lien("coaching/stage", "Stage"),
+        lien("examens", "Examen"),
+        lien("coaching/projet", "Projet"),
+        lien("coaching/organisation", "Organisation"),
+      ]));
+  }
+
+  // Met en avant l'entrée de la page affichée (et ouvre son groupe).
+  function marquerActif() {
+    const chemin = (window.location.hash || "#/").replace(/^#\/?/, "");
+    let actif = null;
+    for (const a of menu.querySelectorAll(".menu-lien")) {
+      a.removeAttribute("aria-current");
+      const c = a.dataset.chemin;
+      const correspond = c === chemin || (c !== "" && chemin.startsWith(`${c}/`));
+      if (correspond && (!actif || c.length > actif.dataset.chemin.length)) actif = a;
+    }
+    if (!actif && etat.dossierActif) actif = menu.querySelector(`[data-chemin="eleves/${etat.dossierActif}"]`);
+    if (actif) {
+      actif.setAttribute("aria-current", "page");
+      const g = actif.closest("details");
+      if (g && !g.open) g.open = true;
+    }
+  }
+
+  // ===========================================================================
+  // DOSSIER ÉLÈVES D'UN CLIENT (#/eleves/<id>)
+  // ===========================================================================
+  // Un dossier = les élèves d'un seul client. Rien n'est mélangé : la base
+  // range chaque élève dans le dossier de son organisme (cloisonnement).
+  // ===========================================================================
+
+  function pourRecherche(texte) {
+    return String(texte || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  }
+
+  async function ecranDossierEleves(organismeId) {
+    afficher(h("p", { class: "chargement" }, "Ouverture du dossier…"));
+    const [org, appr] = await Promise.all([
+      sb.from("organismes").select("id, nom, seuil_vert_jours, seuil_orange_jours").eq("id", organismeId).maybeSingle(),
+      sb.from("apprenants")
+        .select("id, identifiant_externe, prenom, nom, parcours, avancement_pct, statut, date_dernier_contact, date_inscription, cree_le, date_examen")
+        .eq("organisme_id", organismeId).order("nom").order("prenom"),
+    ]);
+    const erreur = org.error || appr.error;
+    if (erreur) return afficher(message("erreur", texteErreur(erreur)));
+    if (!org.data) return afficher(message("info", "Ce dossier n'existe pas ou n'est plus accessible."));
+
+    const o = org.data;
+    const eleves = appr.data;
+    let statutChoisi = "actif";
+    let recherche = "";
+
+    const filtres = h("div", { class: "filtres", role: "group", "aria-label": "Statut des élèves" });
+    const champ = h("input", { type: "search", class: "recherche", placeholder: "Rechercher : nom, identifiant, parcours", "aria-label": "Rechercher un élève", autocomplete: "off" });
+    const zoneListe = h("div");
+    champ.addEventListener("input", () => { recherche = champ.value; dessiner(); });
+
+    const couleurPour = (jours) => (jours === null ? "neutre" : jours <= (o.seuil_vert_jours ?? 7) ? "vert" : jours <= (o.seuil_orange_jours ?? 14) ? "orange" : "rouge");
+
+    function ligneEleve(a) {
+      const jours = joursDepuis(a.date_dernier_contact || a.date_inscription || (a.cree_le || "").slice(0, 10));
+      return h("li", { class: "ligne" },
+        h("span", { class: "ligne-titre" }, lienInterne(`apprenant/${a.id}`, nomApprenant(a))),
+        h("span", { class: "pastilles" },
+          a.statut === "actif" ? pastille(couleurPour(jours), jours === null ? "jamais contacté·e" : `${jours} j sans contact`) : pastille("neutre", LIBELLE_STATUT[a.statut])),
+        h("span", { class: "ligne-detail" }, [
+          a.parcours,
+          a.identifiant_externe,
+          a.avancement_pct === null || a.avancement_pct === undefined ? null : `${Math.round(a.avancement_pct)} % du parcours`,
+          a.date_examen ? `examen le ${dateLisible(a.date_examen)}` : null,
+        ].filter(Boolean).join(" · ")));
+    }
+
+    function dessiner() {
+      filtres.replaceChildren(...Object.entries(LIBELLE_STATUT).map(([statut, texte]) => {
+        const b = h("button", { type: "button", class: "filtre", "aria-pressed": String(statut === statutChoisi) },
+          texte, h("span", { class: "filtre-nombre" }, String(eleves.filter((a) => a.statut === statut).length)));
+        b.addEventListener("click", () => { statutChoisi = statut; dessiner(); });
+        return b;
+      }));
+      const q = pourRecherche(recherche);
+      const visibles = eleves
+        .filter((a) => a.statut === statutChoisi)
+        .filter((a) => !q || pourRecherche([a.prenom, a.nom, a.identifiant_externe, a.parcours].join(" ")).includes(q));
+      memoriserFile(visibles, `eleves/${organismeId}`);
+      zoneListe.replaceChildren(visibles.length
+        ? h("ul", { class: "liste" }, visibles.map(ligneEleve))
+        : message("info", !eleves.length
+            ? "Ce dossier est vide. Importez le fichier d'élèves envoyé par ce client."
+            : q ? "Aucun élève ne correspond à cette recherche." : "Aucun élève avec ce statut."));
+    }
+    dessiner();
+
+    const nbActifs = eleves.filter((a) => a.statut === "actif").length;
+    afficher(
+      h("div", { class: "pile" },
+        h("div", { class: "entete-dossier" },
+          h("span", { class: "icone-dossier icone-dossier-grande", "aria-hidden": "true" }),
+          h("div", {},
+            h("h1", {}, o.nom),
+            h("p", { class: "chapo" }, `Dossier élèves : ${pluriel(nbActifs, "élève en formation", "élèves en formation")}, ${pluriel(eleves.length, "au total", "au total")}.`))),
+        h("div", { class: "actions-ligne" },
+          h("a", { class: "bouton bouton-petit", href: `#/import/${o.id}` }, "Importer des élèves"),
+          h("a", { class: "bouton bouton-secondaire bouton-petit", href: `#/rappels/${o.id}` }, "Qui rappeler"),
+          h("a", { class: "bouton bouton-secondaire bouton-petit", href: `#/examens/${o.id}` }, "Examens et preuves"),
+          h("a", { class: "bouton bouton-secondaire bouton-petit", href: `#/organisme/${o.id}` }, "Fiche du client")),
+        h("section", {}, champ, filtres, zoneListe)));
+    window.scrollTo(0, 0);
+  }
+
+  // ===========================================================================
+  // COACHING : stage, projet, organisation (#/coaching/<type>)
+  // ===========================================================================
+  // L'examen garde son écran (#/examens). Chaque écran classe les élèves en
+  // formation par situation, du plus urgent au plus avancé ; un filtre limite
+  // l'affichage au dossier d'un seul client.
+  // ===========================================================================
+
+  const LIBELLE_STAGE = {
+    non_concerne: "Pas de stage dans ce parcours",
+    a_chercher: "Stage à trouver",
+    structure_trouvee: "Structure trouvée",
+    convention_envoyee: "Convention envoyée, en attente de signature",
+    convention_signee: "Convention signée",
+    en_cours: "En stage",
+    termine: "Stage terminé",
+  };
+  const LIBELLE_SITUATION = {
+    reconversion: "En reconversion",
+    en_emploi: "En emploi",
+    en_recherche: "En recherche d'emploi",
+    creation_activite: "Création d'activité",
+    autre: "Autre situation",
+  };
+
+  function ficheDe(a) {
+    return (Array.isArray(a.coaching) ? a.coaching[0] : a.coaching) || null;
+  }
+
+  const ECRANS_COACHING = {
+    stage: {
+      titre: "Stage",
+      chapo: "Où en est chaque élève de sa recherche de stage et de sa convention. Les conventions à faire signer passent en premier.",
+      groupe: (f) => (f ? f.stage_statut : "a_renseigner"),
+      ordre: ["convention_envoyee", "a_chercher", "structure_trouvee", "a_renseigner", "convention_signee", "en_cours", "termine", "non_concerne"],
+      replies: ["termine", "non_concerne"],
+      libelles: { ...LIBELLE_STAGE, a_renseigner: "Situation de stage à renseigner" },
+      detail: (f) => f && [
+        f.stage_structure,
+        f.stage_debut ? `du ${dateLisible(f.stage_debut)}` : null,
+        f.stage_fin ? `au ${dateLisible(f.stage_fin)}` : null,
+      ].filter(Boolean).join(" "),
+    },
+    projet: {
+      titre: "Projet",
+      chapo: "Le métier visé par chaque élève et sa situation : c'est ce qui le fait tenir jusqu'à l'examen.",
+      groupe: (f) => (f && (f.projet_metier || f.projet_situation) ? (f.projet_situation || "autre") : "a_renseigner"),
+      ordre: ["a_renseigner", "en_recherche", "reconversion", "creation_activite", "en_emploi", "autre"],
+      replies: [],
+      libelles: { ...LIBELLE_SITUATION, a_renseigner: "Projet à définir avec l'élève" },
+      detail: (f) => f && [f.projet_metier ? `Métier visé : ${f.projet_metier}` : null, f.projet_note].filter(Boolean).join(" — "),
+    },
+    organisation: {
+      titre: "Organisation",
+      chapo: "Le temps que chaque élève consacre à sa formation, ses créneaux et son objectif du mois.",
+      groupe: (f) => {
+        if (!f || !f.orga_objectif) return "sans_objectif";
+        if (f.orga_date_fin_visee && joursDepuis(f.orga_date_fin_visee) >= -30) return "fin_proche";
+        return "avec_objectif";
+      },
+      ordre: ["sans_objectif", "fin_proche", "avec_objectif"],
+      replies: [],
+      libelles: { sans_objectif: "Pas d'objectif fixé ce mois-ci", fin_proche: "Fin de parcours visée dans moins de 30 jours", avec_objectif: "Objectif du mois fixé" },
+      detail: (f) => f && [
+        f.orga_objectif ? `Objectif : ${f.orga_objectif}` : null,
+        f.orga_heures_semaine !== null && f.orga_heures_semaine !== undefined ? `${f.orga_heures_semaine} h par semaine` : null,
+        f.orga_creneaux,
+        f.orga_date_fin_visee ? `fin visée le ${dateLisible(f.orga_date_fin_visee)}` : null,
+      ].filter(Boolean).join(" · "),
+    },
+  };
+
+  async function ecranCoaching(type, organismeId) {
+    const ecran = ECRANS_COACHING[type];
+    if (!ecran) return accueilAdmin(etat.profil);
+    afficher(h("p", { class: "chargement" }, `Chargement : ${ecran.titre.toLowerCase()}…`));
+
+    const { data, error } = await sb.from("apprenants")
+      .select("id, organisme_id, prenom, nom, identifiant_externe, parcours, avancement_pct, organismes ( nom ), coaching ( * )")
+      .eq("statut", "actif").order("nom");
+    if (error) return afficher(message("erreur", texteErreur(error)));
+
+    const organismes = new Map();
+    for (const a of data) organismes.set(a.organisme_id, a.organismes?.nom || "Organisme");
+    const choix = h("select", { "aria-label": "Dossier client" },
+      h("option", { value: "" }, "Tous les clients"),
+      [...organismes].sort((x, y) => x[1].localeCompare(y[1], "fr")).map(([id, nom]) => h("option", { value: id }, nom)));
+    choix.value = organismeId && organismes.has(organismeId) ? organismeId : "";
+    choix.addEventListener("change", () => aller(`coaching/${type}${choix.value ? `/${choix.value}` : ""}`));
+
+    const visibles = data.filter((a) => !choix.value || a.organisme_id === choix.value);
+    const groupes = new Map(ecran.ordre.map((cle) => [cle, []]));
+    for (const a of visibles) {
+      const cle = ecran.groupe(ficheDe(a));
+      if (!groupes.has(cle)) groupes.set(cle, []);
+      groupes.get(cle).push(a);
+    }
+    memoriserFile([...groupes.values()].flat(), `coaching/${type}${choix.value ? `/${choix.value}` : ""}`);
+
+    const ligne = (a) => {
+      const detail = ecran.detail(ficheDe(a));
+      return h("li", { class: "ligne" },
+        h("span", { class: "ligne-titre" }, lienInterne(`apprenant/${a.id}`, nomApprenant(a))),
+        h("span", { class: "pastilles" }, choix.value ? null : pastille("neutre", a.organismes?.nom || "")),
+        h("span", { class: "ligne-detail" }, [a.parcours, detail].filter(Boolean).join(" · ")));
+    };
+
+    const sections = [...groupes].filter(([, liste]) => liste.length).map(([cle, liste]) => {
+      const titre = h("div", { class: "section-titre" }, h("h2", {}, ecran.libelles[cle] || cle), h("p", {}, pluriel(liste.length, "élève", "élèves")));
+      const corps = h("ul", { class: "liste" }, liste.map(ligne));
+      return ecran.replies.includes(cle)
+        ? h("details", { class: "depliant section-repliee" }, h("summary", {}, `${ecran.libelles[cle]} (${liste.length})`), corps)
+        : h("section", {}, titre, corps);
+    });
+
+    afficher(
+      h("div", { class: "pile" },
+        h("div", {},
+          h("h1", {}, ecran.titre),
+          h("p", { class: "chapo" }, ecran.chapo)),
+        h("label", { class: "choix-dossier" }, "Dossier", choix),
+        sections.length ? sections : message("info", "Aucun élève en formation dans ce dossier."),
+        h("p", { class: "aide" }, "Pour compléter une situation, ouvrez la fiche de l'élève, partie « Coaching ».")));
+    window.scrollTo(0, 0);
+  }
+
+  // Partie « Coaching » de la fiche apprenant : stage, projet, organisation.
+  function blocCoaching(a, fiche, peutModifier, rafraichir) {
+    const f = fiche || {};
+    if (!peutModifier) {
+      const lignes = [
+        ["Stage", [LIBELLE_STAGE[f.stage_statut || "non_concerne"], ECRANS_COACHING.stage.detail(f)].filter(Boolean).join(" · ")],
+        ["Projet", ECRANS_COACHING.projet.detail(f) || (f.projet_situation ? LIBELLE_SITUATION[f.projet_situation] : "")],
+        ["Organisation", ECRANS_COACHING.organisation.detail(f)],
+      ].filter(([, v]) => v);
+      return h("section", {},
+        h("div", { class: "section-titre" }, h("h2", {}, "Coaching")),
+        lignes.length
+          ? h("dl", { class: "resume-coaching" }, lignes.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))
+          : message("info", "Pas encore d'informations de coaching."));
+    }
+
+    const zone = h("div");
+    const vide = (v) => (v === undefined || v === null ? "" : v);
+    const stageStatut = champChoix("co-stage-statut", "Situation", LIBELLE_STAGE, f.stage_statut || "non_concerne");
+    const stageStructure = champTexte("co-stage-structure", "Structure d'accueil", vide(f.stage_structure), { placeholder: "Ex. : Crèche Les Petits Pas" });
+    const stageDebut = champTexte("co-stage-debut", "Début du stage", vide(f.stage_debut), { type: "date" });
+    const stageFin = champTexte("co-stage-fin", "Fin du stage", vide(f.stage_fin), { type: "date" });
+
+    const metier = champTexte("co-projet-metier", "Métier visé", vide(f.projet_metier), { placeholder: "Ex. : auxiliaire de crèche" });
+    const situation = champChoix("co-projet-situation", "Situation de l'élève", { "": "— Non renseignée —", ...LIBELLE_SITUATION }, f.projet_situation || "");
+    const noteProjet = champTexte("co-projet-note", "Ce qui le motive, ses freins (visible par l'organisme)", vide(f.projet_note), { multiligne: true });
+
+    const heures = champTexte("co-orga-heures", "Heures par semaine", vide(f.orga_heures_semaine), { type: "number", inputmode: "numeric" });
+    heures.champ.min = "0"; heures.champ.max = "60";
+    const creneaux = champTexte("co-orga-creneaux", "Créneaux disponibles", vide(f.orga_creneaux), { placeholder: "Ex. : mardi et jeudi soir" });
+    const objectif = champTexte("co-orga-objectif", "Objectif du mois", vide(f.orga_objectif), { placeholder: "Ex. : terminer les modules 4 et 5" });
+    const finVisee = champTexte("co-orga-fin", "Fin de parcours visée", vide(f.orga_date_fin_visee), { type: "date" });
+
+    const partie = (titre, ouvert, ...champs) => {
+      const d = h("details", { class: "depliant partie-coaching" }, h("summary", {}, titre), h("div", { class: "formulaire" }, ...champs));
+      d.open = ouvert;
+      return d;
+    };
+    const bouton = h("button", { class: "bouton", type: "submit" }, "Enregistrer le coaching");
+    const formulaire = h("form", { class: "formulaire", novalidate: true },
+      partie("Stage", Boolean(f.stage_statut && f.stage_statut !== "non_concerne"), stageStatut.bloc, stageStructure.bloc, h("div", { class: "deux-colonnes" }, stageDebut.bloc, stageFin.bloc)),
+      partie("Projet", Boolean(f.projet_metier), metier.bloc, situation.bloc, noteProjet.bloc),
+      partie("Organisation", Boolean(f.orga_objectif), h("div", { class: "deux-colonnes" }, heures.bloc, finVisee.bloc), creneaux.bloc, objectif.bloc),
+      zone, bouton);
+
+    formulaire.addEventListener("submit", async (evenement) => {
+      evenement.preventDefault();
+      const n = heures.champ.value === "" ? null : Number(heures.champ.value);
+      if (n !== null && (!Number.isInteger(n) || n < 0 || n > 60)) return signaler(zone, "erreur", "Heures par semaine : un nombre entier entre 0 et 60.");
+      if (stageDebut.champ.value && stageFin.champ.value && stageFin.champ.value < stageDebut.champ.value) return signaler(zone, "erreur", "La fin du stage est avant son début.");
+      const texte = (c) => c.champ.value.trim() || null;
+      signaler(zone);
+      occupe(bouton, true, "Enregistrement…");
+      const { error } = await sb.from("coaching").upsert({
+        apprenant_id: a.id,
+        organisme_id: a.organisme_id,
+        stage_statut: stageStatut.champ.value,
+        stage_structure: texte(stageStructure),
+        stage_debut: stageDebut.champ.value || null,
+        stage_fin: stageFin.champ.value || null,
+        projet_metier: texte(metier),
+        projet_situation: situation.champ.value || null,
+        projet_note: texte(noteProjet),
+        orga_heures_semaine: n,
+        orga_creneaux: texte(creneaux),
+        orga_objectif: texte(objectif),
+        orga_date_fin_visee: finVisee.champ.value || null,
+      }, { onConflict: "apprenant_id" });
+      occupe(bouton, false);
+      if (error) return signaler(zone, "erreur", texteErreur(error));
+      rafraichir("Coaching enregistré.");
+    });
+
+    return h("section", {},
+      h("div", { class: "section-titre" }, h("h2", {}, "Coaching")),
+      h("div", { class: "carte carte-large" }, formulaire));
+  }
+
   // ---------------------------------------------------------------------------
   // Déconnexion et démarrage
   // ---------------------------------------------------------------------------
@@ -2488,6 +2924,7 @@
   boutonDeconnexion.addEventListener("click", async () => {
     await sb.auth.signOut();
     zoneCompte.hidden = true;
+    etat.profil = null;
     ecranEmail("Déconnexion effectuée. À bientôt.");
   });
 

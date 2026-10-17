@@ -602,4 +602,55 @@ select tests.doit_etre_refuse(
 rollback;
 
 \echo
+\echo '\n== 15. Coaching : stage, projet, organisation'
+
+begin;
+select tests.session('22222222-2222-4222-8222-222222222222');
+set local role authenticated;
+select tests.verifier((select count(*) from public.coaching) = 2, 'client Horizon : voit les 2 fiches de coaching de SES apprenants');
+select tests.verifier(
+  (select count(*) from public.coaching where organisme_id = 'b0000000-0000-4000-8000-000000000002') = 0,
+  'client Horizon : ne voit aucune fiche de Boréal');
+select tests.verifier(
+  tests.lignes_touchees($$update public.coaching set projet_metier = 'x'$$) = 0,
+  'client : ne peut pas modifier une fiche de coaching');
+rollback;
+
+begin;
+select tests.session('33333333-3333-4333-8333-333333333333');
+set local role authenticated;
+select tests.verifier((select count(*) from public.coaching) = 2, 'client Boréal : voit ses 2 fiches, pas celles d''Horizon');
+rollback;
+
+begin;
+select tests.session('44444444-4444-4444-8444-444444444444');
+set local role authenticated;
+select tests.verifier((select count(*) from public.coaching) = 1, 'appelante : voit seulement la fiche de son apprenante confiée');
+select tests.verifier(
+  tests.lignes_touchees($$update public.coaching set orga_objectif = 'Module 5 fini' where apprenant_id = 'a1000000-0000-4000-8000-000000000001'$$) = 1,
+  'appelante : complète la fiche de son apprenante confiée');
+select tests.verifier(
+  tests.lignes_touchees($$update public.coaching set orga_objectif = 'x' where apprenant_id = 'a1000000-0000-4000-8000-000000000002'$$) = 0,
+  'appelante : ne touche pas à la fiche d''un apprenant non confié');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+insert into public.coaching (apprenant_id, organisme_id, stage_statut)
+values ('a1000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-000000000002', 'a_chercher');
+select tests.verifier(
+  (select organisme_id = 'a0000000-0000-4000-8000-000000000001' from public.coaching where apprenant_id = 'a1000000-0000-4000-8000-000000000003'),
+  'administratrice : la fiche est rangée d''office dans le dossier du bon client');
+select tests.doit_etre_refuse(
+  $$update public.coaching set stage_debut = '2026-12-10', stage_fin = '2026-12-01' where apprenant_id = 'a1000000-0000-4000-8000-000000000003'$$,
+  'fin de stage avant le début : refusé');
+rollback;
+
+begin;
+set local role anon;
+select tests.doit_etre_refuse($$select * from public.coaching$$, 'visiteur non connecté : aucune fiche de coaching');
+rollback;
+
+\echo
 \echo 'TOUS LES TESTS SONT PASSÉS'

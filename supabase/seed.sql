@@ -152,3 +152,18 @@ from (values
   ('IB-108', -15, 'present', 'reussi')
 ) as e (identifiant, decalage, presence, resultat)
 where a.identifiant_externe = e.identifiant;
+
+-- -----------------------------------------------------------------------------
+-- Coaching (étape 9) : stage, projet, organisation — tout est inventé.
+-- -----------------------------------------------------------------------------
+insert into public.coaching (apprenant_id, organisme_id, stage_statut, stage_structure, stage_debut, stage_fin,
+                             projet_metier, projet_situation, orga_heures_semaine, orga_creneaux, orga_objectif, orga_date_fin_visee)
+values
+  ('a1000000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000000', 'a_chercher', null, null, null,
+   'Secrétaire médicale', 'reconversion', 6, 'Mardi et jeudi soir', 'Terminer les modules 4 et 5', prive.aujourdhui() + 120),
+  ('a1000000-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000000000', 'convention_envoyee', 'Cabinet Martin (fictif)', prive.aujourdhui() + 20, prive.aujourdhui() + 34,
+   'Assistante de direction', 'en_emploi', 4, 'Week-end', 'Module 6 et dossier professionnel', prive.aujourdhui() + 90),
+  ('b1000000-0000-4000-8000-000000000001', '00000000-0000-0000-0000-000000000000', 'convention_signee', 'Crèche Les Lucioles (fictif)', prive.aujourdhui() + 10, prive.aujourdhui() + 38,
+   'Auxiliaire de crèche', 'reconversion', 8, 'Matinées', 'Préparer l''épreuve EP1', prive.aujourdhui() + 150),
+  ('b1000000-0000-4000-8000-000000000002', '00000000-0000-0000-0000-000000000000', 'en_cours', 'École maternelle Jaurès (fictif)', prive.aujourdhui() - 5, prive.aujourdhui() + 23,
+   'ATSEM', 'en_recherche', null, null, null, null);
