@@ -112,4 +112,45 @@ test("sans identifiant ni email : prénom + nom", () => {
   assert.equal(r.valides[0].identifiant_externe, "emilie roux");
 });
 
+test("examen : colonnes devinées sans confusion", () => {
+  const { entetes } = I.lireCsv("ID;Résultat examen;Présence examen;Date examen;Date inscription");
+  const corr = I.devinerCorrespondance(entetes);
+  assert.equal(corr.resultat_examen, 1);
+  assert.equal(corr.presence_examen, 2);
+  assert.equal(corr.date_examen, 3);
+  assert.equal(corr.date_inscription, 4);
+});
+
+test("examen : présence et résultat lus en français", () => {
+  assert.equal(I.lirePresence("Présent").valeur, "present");
+  assert.equal(I.lirePresence("absente").valeur, "absent");
+  assert.equal(I.lirePresence("oui").valeur, "present");
+  assert.equal(I.lirePresence("").valeur, null);
+  assert.equal(I.lirePresence("peut-être").ok, false);
+  assert.equal(I.lireResultat("Non admis").valeur, "echoue", "« non admis » n'est pas une réussite");
+  assert.equal(I.lireResultat("Admis").valeur, "reussi");
+  assert.equal(I.lireResultat("Validé").valeur, "reussi");
+  assert.equal(I.lireResultat("Ajourné").valeur, "echoue");
+  assert.equal(I.lireResultat("En attente").valeur, null);
+});
+
+test("examen : cohérence des lignes importées", () => {
+  const csv = [
+    "ID;Date examen;Présence;Résultat",
+    "E1;12/11/2026;;Admis",
+    "E2;12/11/2026;Absent;Admis",
+    "E3;;Présent;",
+    "E4;20/11/2026;;",
+  ].join("\n");
+  const { entetes, lignes } = I.lireCsv(csv);
+  const r = I.preparer(lignes, I.devinerCorrespondance(entetes), "org-1");
+  const e1 = r.valides.find((v) => v.identifiant_externe === "E1");
+  assert.equal(e1.presence_examen, "present", "un résultat implique la présence");
+  assert.equal(e1.resultat_examen, "reussi");
+  assert.equal(e1.date_examen, "2026-11-12");
+  assert.deepEqual(r.erreurs.map((e) => e.ligne), [3, 4], "absent avec résultat, et présence sans date : refusés");
+  assert.equal("presence_examen" in r.valides.find((v) => v.identifiant_externe === "E4"), false,
+    "cellule vide : la présence déjà saisie dans la plateforme n'est pas effacée");
+});
+
 console.log(`\n${n} tests de lecture de fichier réussis`);

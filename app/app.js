@@ -102,7 +102,7 @@
   }
 
   function afficher(...elements) {
-    contenu.replaceChildren(...elements);
+    contenu.replaceChildren(...elements.filter((e) => e !== null && e !== undefined && e !== false));
     // Focus automatique seulement sur les écrans de connexion (pas sur les
     // fiches : sur téléphone, cela ouvrirait le clavier ou le calendrier).
     const premierChamp = contenu.querySelector(".onglets") ? null : contenu.querySelector("input");
@@ -206,7 +206,10 @@
       return routeAdmin();
     }
 
-    if (profil.role === "client") return accueilClient(profil);
+    if (profil.role === "client") {
+      etat.profil = profil;
+      return routeClient();
+    }
     return accueilAppelante(profil);
   }
 
@@ -593,6 +596,8 @@
     if (morceaux[0] === "organisme" && UUID.test(morceaux[1] || "")) return { nom: "organisme", id: morceaux[1] };
     if (morceaux[0] === "rappels") return { nom: "rappels", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "import") return { nom: "import", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
+    if (morceaux[0] === "examens") return { nom: "examens", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
+    if (morceaux[0] === "preuves") return { nom: "preuves", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     return { nom: "accueil" };
   }
 
@@ -611,6 +616,7 @@
     return h("nav", { class: "onglets", "aria-label": "Sections" },
       onglet("", "Tableau de bord", "accueil"),
       onglet("rappels", "À rappeler", "rappels"),
+      onglet("examens", "Examens", "examens"),
       onglet("prospection", "Prospection", "prospection"));
   }
 
@@ -622,11 +628,21 @@
     if (route.nom === "organisme") return ecranOrganisme(route.id);
     if (route.nom === "rappels") return ecranRappels(route.id);
     if (route.nom === "import") return ecranImport(route.id);
+    if (route.nom === "examens") return ecranExamens(route.id);
+    if (route.nom === "preuves") return route.id ? ecranPreuves(route.id) : ecranExamens(null);
     return accueilAdmin(etat.profil);
+  }
+
+  // Espace client : son accueil, et son dossier de preuves (#/preuves).
+  function routeClient() {
+    if (!etat.profil || etat.profil.role !== "client") return aiguiller();
+    if (lireRoute().nom === "preuves") return ecranPreuves(etat.profil.organisme_id);
+    return accueilClient(etat.profil);
   }
 
   window.addEventListener("hashchange", () => {
     if (etat.profil && etat.profil.role === "admin") routeAdmin();
+    else if (etat.profil && etat.profil.role === "client") routeClient();
   });
 
   // ---------------------------------------------------------------------------
@@ -636,13 +652,15 @@
   async function accueilAdmin(profil) {
     afficher(navigationAdmin("accueil"), h("p", { class: "chargement" }, "Chargement du tableau de bord…"));
 
-    const [apprenants, suivi] = await Promise.all([
+    const [apprenants, suivi, relancesExamen] = await Promise.all([
       sb.from("vue_qui_rappeler").select("organisme_id, organisme_nom, alerte"),
       sb.from("organismes_suivi_commercial").select("organisme_id, etape, prochaine_relance"),
+      sb.from("vue_relances_examen").select("id").not("etape_relance", "is", null).eq("relance_faite", false),
     ]);
-    if (apprenants.error || suivi.error) {
-      return afficher(navigationAdmin("accueil"), message("erreur", texteErreur(apprenants.error || suivi.error)));
+    if (apprenants.error || suivi.error || relancesExamen.error) {
+      return afficher(navigationAdmin("accueil"), message("erreur", texteErreur(apprenants.error || suivi.error || relancesExamen.error)));
     }
+    const nbRelancesExamen = relancesExamen.data.length;
 
     const parOrganisme = new Map();
     for (const l of apprenants.data) {
@@ -672,6 +690,13 @@
               h("strong", {}, pluriel(aRelancer, "organisme à relancer", "organismes à relancer")),
               " aujourd'hui ou en retard. ",
               lienInterne("prospection", "Voir la liste"))
+          : null,
+
+        nbRelancesExamen
+          ? h("p", { class: "message message-action" },
+              h("strong", {}, pluriel(nbRelancesExamen, "relance d'examen", "relances d'examen")),
+              " à faire (J-30, J-7 ou J-1). ",
+              lienInterne("examens", "Voir les examens"))
           : null,
 
         blocCompteurs(compterAlertes(apprenants.data), apprenants.data.length),
@@ -1016,7 +1041,9 @@
           h("div", { class: "section-titre" }, h("h2", {}, "Apprenants"), h("p", {}, pluriel(apprenantsCount, "apprenant", "apprenants"))),
           h("div", { class: "actions-ligne" },
             h("a", { href: `#/import/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Importer un fichier"),
-            apprenantsCount ? h("a", { href: `#/rappels/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Qui rappeler en premier") : null)),
+            apprenantsCount ? h("a", { href: `#/rappels/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Qui rappeler en premier") : null,
+            apprenantsCount ? h("a", { href: `#/examens/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Examens") : null,
+            apprenantsCount ? h("a", { href: `#/preuves/${id}`, class: "bouton bouton-secondaire bouton-petit" }, "Dossier de preuves Qualiopi") : null)),
 
         h("section", {},
           h("div", { class: "section-titre" }, h("h2", {}, "Historique des échanges"), h("p", {}, pluriel(echanges.data.length, "échange", "échanges"))),
@@ -1229,11 +1256,22 @@
         const existants = await sb.from("apprenants").select("identifiant_externe").eq("organisme_id", etatImport.organismeId);
         const dejaLa = new Set((existants.data || []).map((e) => e.identifiant_externe));
 
+        // Envoi par groupes de lignes ayant les mêmes colonnes : une ligne dont
+        // une cellule d'examen est vide n'envoie pas cette colonne, et ne doit
+        // pas effacer ce qui a été saisi dans la plateforme.
+        const groupes = new Map();
+        for (const v of r.valides) {
+          const signature = Object.keys(v).sort().join(",");
+          if (!groupes.has(signature)) groupes.set(signature, []);
+          groupes.get(signature).push(v);
+        }
         let erreur = null;
-        for (let i = 0; i < r.valides.length && !erreur; i += 500) {
-          const lot = r.valides.slice(i, i + 500);
-          const res = await sb.from("apprenants").upsert(lot, { onConflict: "organisme_id,identifiant_externe", defaultToNull: false });
-          erreur = res.error;
+        for (const groupe of groupes.values()) {
+          for (let i = 0; i < groupe.length && !erreur; i += 500) {
+            const lot = groupe.slice(i, i + 500);
+            const res = await sb.from("apprenants").upsert(lot, { onConflict: "organisme_id,identifiant_externe", defaultToNull: false });
+            erreur = res.error;
+          }
         }
         occupe(bouton, false);
         if (erreur) return signaler(zoneResultat, "erreur", `L'import s'est arrêté : ${texteErreur(erreur)}`);
@@ -1275,16 +1313,548 @@
     );
   }
 
+  // ===========================================================================
+  // SUIVI JUSQU'À L'EXAMEN (étape 5)
+  // ===========================================================================
+  //   #/examens            tous les clients
+  //   #/examens/<id>       un client : relances, saisie, taux par cohorte
+  //   #/preuves/<id>       dossier de preuves Qualiopi (aussi #/preuves côté client)
+  // ===========================================================================
+
+  const LIBELLE_PRESENCE = { present: "Présent·e", absent: "Absent·e" };
+  const LIBELLE_RESULTAT = { reussi: "Réussi", echoue: "Échoué" };
+  const COULEUR_RELANCE = { "J-1": "rouge", "J-7": "orange", "J-30": "neutre" };
+  const LIBELLE_RESULTAT_APPEL = { joint: "Joint·e", messagerie: "Message laissé", injoignable: "Injoignable", refuse_suivi: "Refuse le suivi" };
+  const LIBELLE_CANAL_APPEL = { telephone: "Téléphone", sms: "SMS", email: "Email" };
+  const LIBELLE_STATUT = { actif: "En formation", termine: "Terminé", abandon: "Abandon" };
+
+  function nomApprenant(a) {
+    return `${a.prenom || ""} ${a.nom || ""}`.trim() || a.identifiant_externe || "Apprenant";
+  }
+
+  function lienTelephone(numero) {
+    return numero ? h("span", { class: "telephone" }, " · ", h("a", { href: `tel:${numero.replace(/[^\d+]/g, "")}` }, numero)) : null;
+  }
+
+  function pourcentage(valeur) {
+    return valeur === null || valeur === undefined || Number.isNaN(valeur) ? "—" : `${String(Math.round(valeur * 10) / 10).replace(".", ",")} %`;
+  }
+
+  function taux(numerateur, denominateur) {
+    return denominateur ? (100 * numerateur) / denominateur : null;
+  }
+
+  // Additionne les lignes de vue_taux_examen (une ligne par cohorte).
+  function totalTaux(lignes) {
+    const t = { effectif: 0, abandons: 0, inscrits_examen: 0, a_venir: 0, a_renseigner: 0, presents: 0, absents: 0, reussis: 0, echoues: 0 };
+    for (const l of lignes) for (const cle of Object.keys(t)) t[cle] += Number(l[cle] || 0);
+    t.taux_presence = taux(t.presents, t.presents + t.absents);
+    t.taux_reussite = taux(t.reussis, t.reussis + t.echoues);
+    return t;
+  }
+
+  // Lit toutes les lignes d'une requête, par pages de 1 000 (limite de Supabase).
+  async function toutLire(fabriquerRequete) {
+    const resultat = [];
+    for (let debut = 0; ; debut += 1000) {
+      const { data, error } = await fabriquerRequete().range(debut, debut + 999);
+      if (error) return { data: null, error };
+      resultat.push(...data);
+      if (data.length < 1000) return { data: resultat, error: null };
+    }
+  }
+
+  function tableauTaux(lignes, tauxDepart) {
+    const t = totalTaux(lignes);
+    const ligne = (libelle, l, classe) => h("tr", { class: classe || null },
+      h("td", {}, libelle),
+      h("td", {}, String(l.inscrits_examen)),
+      h("td", {}, String(l.presents)),
+      h("td", {}, String(l.absents)),
+      h("td", {}, pourcentage(l.taux_presence === null || l.taux_presence === undefined ? null : Number(l.taux_presence))),
+      h("td", {}, String(l.reussis)),
+      h("td", {}, pourcentage(l.taux_reussite === null || l.taux_reussite === undefined ? null : Number(l.taux_reussite))));
+    const tries = lignes.slice().sort((a, b) => a.cohorte.localeCompare(b.cohorte));
+    return h("div", { class: "pile pile-serree" },
+      h("div", { class: "tableau-defilant" },
+        h("table", { class: "tableau" },
+          h("thead", {}, h("tr", {},
+            h("th", {}, "Inscrits en"), h("th", {}, "Examens"), h("th", {}, "Présents"),
+            h("th", {}, "Absents"), h("th", {}, "Présence"), h("th", {}, "Réussis"), h("th", {}, "Réussite"))),
+          h("tbody", {},
+            tries.map((l) => ligne(moisLisible(l.cohorte), l)),
+            tries.length > 1 ? ligne("Total", t, "ligne-total") : null))),
+      h("p", { class: "aide" },
+        "Taux de présence = présents ÷ (présents + absents). Taux de réussite = réussis ÷ résultats connus. ",
+        t.a_renseigner ? `${pluriel(t.a_renseigner, "examen passé n'est pas encore renseigné", "examens passés ne sont pas encore renseignés")} : il n'entre pas dans les taux. ` : "",
+        tauxDepart !== null && tauxDepart !== undefined ? `Taux de présence avant Fil Rouge : ${pourcentage(Number(tauxDepart))}.` : ""));
+  }
+
+  function moisLisible(cohorte) {
+    if (!/^\d{4}-\d{2}$/.test(cohorte || "")) return "Sans date d'inscription";
+    const texte = new Date(`${cohorte}-15T12:00:00Z`).toLocaleDateString("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
+    return texte.charAt(0).toUpperCase() + texte.slice(1);
+  }
+
+  // Formulaire compact : date d'examen, présence, résultat d'un apprenant.
+  function editeurExamen(a, apresEnregistrement) {
+    const zone = h("div");
+    const date = h("input", { type: "date", value: a.date_examen || "", "aria-label": "Date d'examen" });
+    const presence = h("select", { "aria-label": "Présence" },
+      h("option", { value: "" }, "Présence : à venir / inconnue"),
+      h("option", { value: "present" }, "Présent·e"),
+      h("option", { value: "absent" }, "Absent·e"));
+    presence.value = a.presence_examen || "";
+    const resultat = h("select", { "aria-label": "Résultat" },
+      h("option", { value: "" }, "Résultat : inconnu"),
+      h("option", { value: "reussi" }, "Réussi"),
+      h("option", { value: "echoue" }, "Échoué"));
+    resultat.value = a.resultat_examen || "";
+    const majResultat = () => {
+      resultat.disabled = presence.value !== "present";
+      if (resultat.disabled) resultat.value = "";
+    };
+    presence.addEventListener("change", majResultat);
+    majResultat();
+    const bouton = h("button", { type: "submit", class: "bouton bouton-petit" }, "Enregistrer");
+    const formulaire = h("form", { class: "editeur-examen", novalidate: true },
+      h("label", {}, "Date d'examen", date),
+      h("label", {}, "Présence", presence),
+      h("label", {}, "Résultat", resultat),
+      bouton, zone);
+    formulaire.addEventListener("submit", async (evenement) => {
+      evenement.preventDefault();
+      if (!date.value && presence.value) return signaler(zone, "erreur", "Indiquez d'abord la date de l'examen.");
+      signaler(zone);
+      occupe(bouton, true, "Enregistrement…");
+      const valeurs = {
+        date_examen: date.value || null,
+        presence_examen: date.value ? (presence.value || null) : null,
+        resultat_examen: date.value && presence.value === "present" ? (resultat.value || null) : null,
+      };
+      const { error } = await sb.from("apprenants").update(valeurs).eq("id", a.id);
+      occupe(bouton, false);
+      if (error) return signaler(zone, "erreur", texteErreur(error));
+      Object.assign(a, valeurs);
+      apresEnregistrement();
+    });
+    return formulaire;
+  }
+
+  // Une ligne d'apprenant avec son examen, et un bouton « Modifier ».
+  function ligneExamen(a, options) {
+    const { afficherOrganisme, rafraichir, rapide } = options;
+    const li = h("li", { class: "ligne" });
+    const dessiner = () => {
+      const pastilles = [];
+      if (a.date_examen) pastilles.push(pastille("neutre", dateLisible(a.date_examen)));
+      if (a.presence_examen) pastilles.push(pastille(a.presence_examen === "present" ? "vert" : "rouge", LIBELLE_PRESENCE[a.presence_examen]));
+      if (a.resultat_examen) pastilles.push(pastille(a.resultat_examen === "reussi" ? "vert" : "orange", LIBELLE_RESULTAT[a.resultat_examen]));
+      const zoneEdition = h("div", { class: "ligne-edition", hidden: true });
+      const boutonModifier = h("button", { type: "button", class: "bouton-lien" }, a.date_examen ? "Modifier" : "Ajouter une date d'examen");
+      boutonModifier.addEventListener("click", () => {
+        zoneEdition.hidden = !zoneEdition.hidden;
+        if (!zoneEdition.hidden && !zoneEdition.firstChild) zoneEdition.append(editeurExamen(a, rafraichir));
+      });
+      // Saisie en un geste pour un examen passé : présent / absent, puis le résultat.
+      const zoneRapide = h("div", { class: "actions-ligne" });
+      const enregistrerRapide = async (valeurs, bouton) => {
+        occupe(bouton, true, "…");
+        const { error } = await sb.from("apprenants").update(valeurs).eq("id", a.id);
+        occupe(bouton, false);
+        if (error) return zoneRapide.replaceChildren(message("erreur", texteErreur(error)));
+        Object.assign(a, valeurs);
+        rafraichir();
+      };
+      if (rapide && a.date_examen && !a.presence_examen) {
+        const present = h("button", { type: "button", class: "puce" }, "Présent·e");
+        const absent = h("button", { type: "button", class: "puce" }, "Absent·e");
+        present.addEventListener("click", () => enregistrerRapide({ presence_examen: "present" }, present));
+        absent.addEventListener("click", () => enregistrerRapide({ presence_examen: "absent", resultat_examen: null }, absent));
+        zoneRapide.append(present, absent);
+      } else if (rapide && a.presence_examen === "present" && !a.resultat_examen) {
+        const reussi = h("button", { type: "button", class: "puce" }, "Réussi");
+        const echoue = h("button", { type: "button", class: "puce" }, "Échoué");
+        reussi.addEventListener("click", () => enregistrerRapide({ resultat_examen: "reussi" }, reussi));
+        echoue.addEventListener("click", () => enregistrerRapide({ resultat_examen: "echoue" }, echoue));
+        zoneRapide.append(h("span", { class: "aide" }, "Résultat :"), reussi, echoue);
+      }
+      const details = [afficherOrganisme ? a.organisme_nom : null, a.parcours].filter(Boolean).join(" · ");
+      li.replaceChildren(...[
+        h("span", { class: "ligne-titre" }, nomApprenant(a)),
+        h("span", { class: "pastilles" }, pastilles),
+        h("span", { class: "ligne-detail" }, details, lienTelephone(a.telephone)),
+        zoneRapide.childNodes.length ? h("div", { class: "ligne-detail" }, zoneRapide) : null,
+        etat.profil && etat.profil.role === "admin" ? h("div", { class: "ligne-detail" }, boutonModifier) : null,
+        zoneEdition,
+      ].filter(Boolean)); // replaceChildren écrirait « null » en toutes lettres
+    };
+    dessiner();
+    return li;
+  }
+
+  async function ecranExamens(organismeId) {
+    afficher(navigationAdmin("examens"), h("p", { class: "chargement" }, "Chargement des examens…"));
+
+    const [apprenants, relances, tauxCohortes] = await Promise.all([
+      toutLire(() => sb.from("apprenants")
+        .select("id, organisme_id, identifiant_externe, prenom, nom, telephone, parcours, statut, date_examen, presence_examen, resultat_examen, organismes ( nom, taux_presence_depart )")
+        .order("date_examen", { ascending: true, nullsFirst: false }).order("id")),
+      sb.from("vue_relances_examen").select("id, etape_relance, relance_faite, jours_avant_examen"),
+      sb.from("vue_taux_examen").select("*"),
+    ]);
+    const erreur = apprenants.error || relances.error || tauxCohortes.error;
+    if (erreur) return afficher(navigationAdmin("examens"), message("erreur", texteErreur(erreur)));
+
+    const tous = apprenants.data.map((a) => ({ ...a, organisme_nom: a.organismes?.nom || "", taux_presence_depart: a.organismes?.taux_presence_depart }));
+    const organismes = new Map();
+    for (const a of tous) {
+      if (!organismes.has(a.organisme_id)) organismes.set(a.organisme_id, { id: a.organisme_id, nom: a.organisme_nom, n: 0, tauxDepart: a.taux_presence_depart });
+      if (a.date_examen) organismes.get(a.organisme_id).n++;
+    }
+    const filtrer = (l) => !organismeId || l.organisme_id === organismeId;
+    const visibles = tous.filter(filtrer);
+    const relanceParId = new Map(relances.data.map((r) => [r.id, r]));
+    const ajd = aujourdhui();
+
+    const rafraichir = () => ecranExamens(organismeId);
+    const options = { afficherOrganisme: !organismeId, rafraichir };
+
+    const aRelancer = visibles
+      .filter((a) => relanceParId.has(a.id) && relanceParId.get(a.id).etape_relance && !relanceParId.get(a.id).relance_faite)
+      .sort((a, b) => a.date_examen.localeCompare(b.date_examen));
+    const aRenseigner = visibles
+      .filter((a) => a.statut !== "abandon" && a.date_examen && a.date_examen < ajd && (!a.presence_examen || (a.presence_examen === "present" && !a.resultat_examen)))
+      .sort((a, b) => a.date_examen.localeCompare(b.date_examen));
+    const aVenir = visibles.filter((a) => a.date_examen && a.date_examen >= ajd && !a.presence_examen && a.statut !== "abandon");
+    const passes = visibles.filter((a) => a.date_examen && (a.date_examen < ajd || a.presence_examen)).sort((a, b) => b.date_examen.localeCompare(a.date_examen));
+    const sansDate = visibles.filter((a) => !a.date_examen && a.statut === "actif");
+
+    const ligneRelance = (a) => {
+      const r = relanceParId.get(a.id);
+      return h("li", { class: "ligne" },
+        h("span", { class: "ligne-titre" }, nomApprenant(a)),
+        h("span", { class: "pastilles" }, pastille(COULEUR_RELANCE[r.etape_relance], `${r.etape_relance} · ${ecartJours(a.date_examen)}`)),
+        h("span", { class: "ligne-detail" },
+          [options.afficherOrganisme ? a.organisme_nom : null, a.parcours, `examen le ${dateLisible(a.date_examen)}`].filter(Boolean).join(" · "),
+          lienTelephone(a.telephone)));
+    };
+
+    const filtre = (id, texte, n) =>
+      h("a", { href: id ? `#/examens/${id}` : "#/examens", class: "filtre", "aria-current": (organismeId || null) === id ? "true" : null },
+        texte, h("span", { class: "filtre-nombre" }, String(n)));
+
+    // Taux de départ (base de l'option résultat), pour un client sélectionné.
+    let blocTauxDepart = null;
+    if (organismeId && organismes.has(organismeId)) {
+      const zone = h("div");
+      const champ = h("input", { type: "text", inputmode: "decimal", id: "taux-depart", value: organismes.get(organismeId).tauxDepart ?? "", placeholder: "ex. : 70" });
+      const bouton = h("button", { type: "submit", class: "bouton bouton-secondaire bouton-petit" }, "Enregistrer");
+      const formulaire = h("form", { class: "formulaire", novalidate: true },
+        h("label", { for: "taux-depart" }, "Taux de présence à l'examen avant Fil Rouge (%)",
+          h("span", { class: "aide" }, "Mesuré au diagnostic. Sert de point de départ pour l'option « résultat » du contrat."), champ),
+        zone, bouton);
+      formulaire.addEventListener("submit", async (evenement) => {
+        evenement.preventDefault();
+        const brut = champ.value.replace(",", ".").replace("%", "").trim();
+        const valeur = brut === "" ? null : Number(brut);
+        if (valeur !== null && (!Number.isFinite(valeur) || valeur < 0 || valeur > 100)) return signaler(zone, "erreur", "Indiquez un nombre entre 0 et 100.");
+        occupe(bouton, true, "Enregistrement…");
+        const { error } = await sb.from("organismes").update({ taux_presence_depart: valeur }).eq("id", organismeId);
+        occupe(bouton, false);
+        if (error) return signaler(zone, "erreur", texteErreur(error));
+        rafraichir();
+      });
+      blocTauxDepart = h("div", { class: "carte carte-large" }, formulaire);
+    }
+
+    const tauxVisibles = tauxCohortes.data.filter(filtrer);
+    const total = totalTaux(tauxVisibles);
+    const tauxDepart = organismeId && organismes.has(organismeId) ? organismes.get(organismeId).tauxDepart : null;
+
+    afficher(
+      navigationAdmin("examens"),
+      h("div", { class: "pile" },
+        h("div", {},
+          h("p", { class: "surtitre" }, organismeId ? lienInterne(`organisme/${organismeId}`, "← Fiche du client") : "Examens"),
+          h("h1", {}, organismeId && organismes.has(organismeId) ? `Examens · ${organismes.get(organismeId).nom}` : "Jusqu'à l'examen"),
+          h("p", { class: "chapo" }, "Relances J-30, J-7 et J-1, présence le jour J, résultats et taux par cohorte.")),
+        organismes.size > 1
+          ? h("div", { class: "filtres" },
+              filtre(null, "Tous les clients", [...organismes.values()].reduce((n, o) => n + o.n, 0)),
+              [...organismes.values()].sort((a, b) => a.nom.localeCompare(b.nom, "fr")).map((o) => filtre(o.id, o.nom, o.n)))
+          : null,
+
+        h("div", { class: "compteurs" },
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, aVenir.length), h("span", { class: "compteur-libelle" }, "examens à venir")),
+          h("div", { class: `compteur ${aRelancer.length ? "compteur-rouge" : ""}` }, h("span", { class: "compteur-valeur" }, aRelancer.length), h("span", { class: "compteur-libelle" }, "relances à faire")),
+          h("div", { class: "compteur compteur-vert" }, h("span", { class: "compteur-valeur" }, pourcentage(total.taux_presence)), h("span", { class: "compteur-libelle" }, "taux de présence")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, pourcentage(total.taux_reussite)), h("span", { class: "compteur-libelle" }, "taux de réussite"))),
+
+        organismeId ? h("div", { class: "actions-ligne" },
+          h("a", { href: `#/preuves/${organismeId}`, class: "bouton bouton-petit" }, "Dossier de preuves Qualiopi")) : null,
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "À relancer avant l'examen"), h("p", {}, "J-30 · J-7 · J-1")),
+          aRelancer.length
+            ? h("ul", { class: "liste" }, aRelancer.map(ligneRelance))
+            : message("info", "Aucune relance d'examen à faire aujourd'hui. Un appel noté dans la fenêtre (30, 7 ou 1 jour avant) compte comme relance faite.")),
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Examens passés à renseigner"), h("p", {}, pluriel(aRenseigner.length, "apprenant", "apprenants"))),
+          aRenseigner.length
+            ? h("ul", { class: "liste" }, aRenseigner.map((a) => ligneExamen(a, { ...options, rapide: true })))
+            : message("info", "Tout est à jour : chaque examen passé a sa présence et son résultat.")),
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Taux par cohorte")),
+          tauxVisibles.some((l) => Number(l.inscrits_examen))
+            ? tableauTaux(tauxVisibles, tauxDepart)
+            : message("info", "Aucun examen enregistré pour l'instant. Ajoutez la colonne « Date d'examen » au prochain import, ou saisissez les dates ci-dessous.")),
+
+        blocTauxDepart,
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Examens à venir"), h("p", {}, pluriel(aVenir.length, "apprenant", "apprenants"))),
+          aVenir.length ? h("ul", { class: "liste" }, aVenir.map((a) => ligneExamen(a, options))) : message("info", "Aucun examen à venir.")),
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Examens passés"), h("p", {}, pluriel(passes.length, "apprenant", "apprenants"))),
+          passes.length ? h("ul", { class: "liste" }, passes.map((a) => ligneExamen(a, options))) : message("info", "Aucun examen passé.")),
+
+        h("section", {},
+          h("div", { class: "section-titre" }, h("h2", {}, "Sans date d'examen"), h("p", {}, pluriel(sansDate.length, "apprenant en formation", "apprenants en formation"))),
+          sansDate.length
+            ? h("details", { class: "depliant" },
+                h("summary", {}, "Afficher la liste"),
+                h("ul", { class: "liste" }, sansDate.map((a) => ligneExamen(a, options))))
+            : message("info", "Tous les apprenants en formation ont une date d'examen."))
+      )
+    );
+    window.scrollTo(0, 0);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dossier de preuves Qualiopi (administratrice et client)
+  // ---------------------------------------------------------------------------
+
+  // CSV pour Excel : point-virgule, BOM UTF-8, et protection contre les
+  // cellules commençant par = + - @ (formules exécutées à l'ouverture).
+  function telechargerCsv(nomFichier, entetes, lignes) {
+    const cellule = (v) => {
+      let t = v === null || v === undefined ? "" : String(v);
+      if (/^[=+\-@\t\r]/.test(t)) t = `'${t}`;
+      return /[";\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const texte = "﻿" + [entetes, ...lignes].map((l) => l.map(cellule).join(";")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([texte], { type: "text/csv;charset=utf-8" }));
+    const lien = h("a", { href: url, download: nomFichier });
+    document.body.append(lien);
+    lien.click();
+    lien.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function nomFichier(texte) {
+    return normaliserNom(texte).slice(0, 40) || "organisme";
+  }
+  function normaliserNom(texte) {
+    return String(texte || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  }
+
+  // Minuit à l'heure de Paris (heure d'été ou d'hiver), pour filtrer les appels.
+  function debutJourParis(dateIso) {
+    let decalage = "+01:00";
+    try {
+      const partie = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Paris", timeZoneName: "longOffset" })
+        .formatToParts(new Date(`${dateIso}T12:00:00Z`)).find((p) => p.type === "timeZoneName");
+      if (partie) decalage = partie.value.replace("GMT", "") || "+00:00";
+    } catch (e) { /* navigateur ancien : heure d'hiver par défaut */ }
+    return `${dateIso}T00:00:00${decalage}`;
+  }
+
+  function dateHeureLisible(horodatage) {
+    return new Date(horodatage).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris" });
+  }
+
+  async function ecranPreuves(organismeId, periode) {
+    const estAdmin = etat.profil && etat.profil.role === "admin";
+    const entete = estAdmin ? [navigationAdmin("examens")] : [];
+    afficher(...entete, h("p", { class: "chargement" }, "Préparation du dossier de preuves…"));
+
+    const au = periode?.au || aujourdhui();
+    const du = periode?.du || ajouterJours(au, -90);
+
+    const [organisme, apprenants, appels, tauxCohortes] = await Promise.all([
+      sb.from("organismes").select("id, nom, seuil_vert_jours, seuil_orange_jours, taux_presence_depart").eq("id", organismeId).maybeSingle(),
+      toutLire(() => sb.from("apprenants")
+        .select("id, identifiant_externe, prenom, nom, parcours, statut, avancement_pct, derniere_connexion, date_dernier_contact, date_inscription, date_examen, presence_examen, resultat_examen")
+        .eq("organisme_id", organismeId).order("nom").order("id")),
+      toutLire(() => sb.from("appels")
+        .select("id, apprenant_id, date_appel, canal, resultat, note_client, prochaine_action, date_prochaine_action")
+        .eq("organisme_id", organismeId)
+        .gte("date_appel", debutJourParis(du)).lt("date_appel", debutJourParis(ajouterJours(au, 1)))
+        .order("date_appel").order("id")),
+      sb.from("vue_taux_examen").select("*").eq("organisme_id", organismeId),
+    ]);
+    const erreur = organisme.error || apprenants.error || appels.error || tauxCohortes.error;
+    if (erreur) return afficher(...entete, message("erreur", texteErreur(erreur)));
+    if (!organisme.data) return afficher(...entete, message("info", "Cet organisme n'existe plus."));
+
+    const org = organisme.data;
+    const parId = new Map(apprenants.data.map((a) => [a.id, a]));
+    const contacts = appels.data;
+    const contactesIds = new Set(contacts.map((c) => c.apprenant_id));
+    const jointsIds = new Set(contacts.filter((c) => c.resultat === "joint").map((c) => c.apprenant_id));
+    const contactsParApprenant = new Map();
+    for (const c of contacts) contactsParApprenant.set(c.apprenant_id, (contactsParApprenant.get(c.apprenant_id) || 0) + 1);
+    const actifs = apprenants.data.filter((a) => a.statut === "actif");
+    const examensPeriode = apprenants.data
+      .filter((a) => a.date_examen && a.date_examen >= du && a.date_examen <= au)
+      .sort((a, b) => a.date_examen.localeCompare(b.date_examen));
+    const examensAVenir = apprenants.data
+      .filter((a) => a.date_examen && a.date_examen > au && a.statut !== "abandon")
+      .sort((a, b) => a.date_examen.localeCompare(b.date_examen));
+    const total = totalTaux(tauxCohortes.data);
+    const presentsPeriode = examensPeriode.filter((a) => a.presence_examen === "present").length;
+    const absentsPeriode = examensPeriode.filter((a) => a.presence_examen === "absent").length;
+    const nomAppr = (id) => (parId.has(id) ? nomApprenant(parId.get(id)) : "Apprenant");
+
+    // --- Choix de la période ---
+    const zonePeriode = h("div");
+    const champDu = h("input", { type: "date", id: "preuves-du", value: du });
+    const champAu = h("input", { type: "date", id: "preuves-au", value: au });
+    const boutonPeriode = h("button", { type: "submit", class: "bouton bouton-secondaire bouton-petit" }, "Mettre à jour");
+    const formulairePeriode = h("form", { class: "formulaire", novalidate: true },
+      h("div", { class: "deux-colonnes" },
+        h("label", { for: "preuves-du" }, "Du", champDu),
+        h("label", { for: "preuves-au" }, "Au", champAu)),
+      h("div", { class: "raccourcis" },
+        h("span", { class: "aide" }, "Période :"),
+        [["3 derniers mois", 90], ["6 derniers mois", 182], ["12 derniers mois", 365]].map(([texte, n]) =>
+          h("button", { type: "button", class: "puce", onclick: () => ecranPreuves(organismeId, { du: ajouterJours(aujourdhui(), -n), au: aujourdhui() }) }, texte))),
+      zonePeriode, boutonPeriode);
+    formulairePeriode.addEventListener("submit", (evenement) => {
+      evenement.preventDefault();
+      if (!champDu.value || !champAu.value || champDu.value > champAu.value) return signaler(zonePeriode, "erreur", "Choisissez une date de début antérieure à la date de fin.");
+      ecranPreuves(organismeId, { du: champDu.value, au: champAu.value });
+    });
+
+    // --- Exports ---
+    const suffixe = `${nomFichier(org.nom)}-${du}-au-${au}`;
+    const exporterContacts = () => telechargerCsv(`preuves-suivi-${suffixe}.csv`,
+      ["Date", "Apprenant", "Identifiant", "Parcours", "Canal", "Résultat", "Compte rendu", "Suite prévue", "Date de la suite"],
+      contacts.map((c) => {
+        const a = parId.get(c.apprenant_id) || {};
+        return [dateHeureLisible(c.date_appel), nomAppr(c.apprenant_id), a.identifiant_externe || "", a.parcours || "",
+          LIBELLE_CANAL_APPEL[c.canal] || c.canal, LIBELLE_RESULTAT_APPEL[c.resultat] || c.resultat,
+          c.note_client || "", c.prochaine_action || "", c.date_prochaine_action ? dateLisible(c.date_prochaine_action) : ""];
+      }));
+    const exporterExamens = () => telechargerCsv(`examens-${nomFichier(org.nom)}-${au}.csv`,
+      ["Apprenant", "Identifiant", "Parcours", "Inscription", "Statut", "Date d'examen", "Présence", "Résultat"],
+      apprenants.data.map((a) => [nomApprenant(a), a.identifiant_externe || "", a.parcours || "",
+        a.date_inscription ? dateLisible(a.date_inscription) : "", LIBELLE_STATUT[a.statut] || a.statut,
+        a.date_examen ? dateLisible(a.date_examen) : "", LIBELLE_PRESENCE[a.presence_examen] || "", LIBELLE_RESULTAT[a.resultat_examen] || ""]));
+
+    const tableau = (entetes, lignes) => h("div", { class: "tableau-defilant" },
+      h("table", { class: "tableau" },
+        h("thead", {}, h("tr", {}, entetes.map((e) => h("th", {}, e)))),
+        h("tbody", {}, lignes.map((l) => h("tr", {}, l.map((c) => h("td", {}, c === null || c === undefined || c === "" ? "—" : c)))))));
+
+    // --- Le dossier lui-même ---
+    const dossier = h("article", { class: "dossier" },
+      h("header", { class: "dossier-entete" },
+        h("p", { class: "surtitre" }, "Dossier de preuves · Qualiopi"),
+        h("h1", {}, org.nom),
+        h("p", { class: "chapo" }, `Suivi des apprenants en formation à distance, du ${dateLisible(du)} au ${dateLisible(au)}.`),
+        h("p", { class: "aide" }, `Établi le ${dateLisible(aujourdhui())} par Fil Rouge Apprenants, prestataire du suivi. Données issues de la plateforme de suivi, horodatées à chaque saisie.`)),
+
+      h("section", {},
+        h("h2", {}, "Synthèse de la période"),
+        h("div", { class: "compteurs" },
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, apprenants.data.length), h("span", { class: "compteur-libelle" }, "apprenants suivis")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, contacts.length), h("span", { class: "compteur-libelle" }, "contacts tracés")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, contactesIds.size), h("span", { class: "compteur-libelle" }, "apprenants contactés")),
+          h("div", { class: "compteur compteur-vert" }, h("span", { class: "compteur-valeur" }, pourcentage(taux(jointsIds.size, contactesIds.size))), h("span", { class: "compteur-libelle" }, "joints au moins une fois"))),
+        h("div", { class: "compteurs" },
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, examensPeriode.length), h("span", { class: "compteur-libelle" }, "examens sur la période")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, `${presentsPeriode} / ${presentsPeriode + absentsPeriode}`), h("span", { class: "compteur-libelle" }, "présents / renseignés")),
+          h("div", { class: "compteur compteur-vert" }, h("span", { class: "compteur-valeur" }, pourcentage(total.taux_presence)), h("span", { class: "compteur-libelle" }, "taux de présence (cumul)")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, pourcentage(total.taux_reussite)), h("span", { class: "compteur-libelle" }, "taux de réussite (cumul)")))),
+
+      h("section", {},
+        h("h2", {}, "Indicateur 12 · Prévention des ruptures de parcours"),
+        h("p", {}, `Chaque apprenant sans contact depuis plus de ${org.seuil_vert_jours} jours est repéré, puis appelé en priorité au-delà de ${org.seuil_orange_jours} jours. Chaque action est datée, avec son résultat et la suite prévue. Le compte rendu ne reprend que les éléments utiles au parcours de formation.`),
+        contacts.length
+          ? tableau(["Date", "Apprenant", "Canal", "Résultat", "Compte rendu", "Suite prévue"],
+              contacts.map((c) => [dateHeureLisible(c.date_appel), nomAppr(c.apprenant_id), LIBELLE_CANAL_APPEL[c.canal] || c.canal,
+                LIBELLE_RESULTAT_APPEL[c.resultat] || c.resultat, c.note_client,
+                [c.prochaine_action, c.date_prochaine_action ? `(${dateLisible(c.date_prochaine_action)})` : null].filter(Boolean).join(" ")]))
+          : message("info", "Aucun contact enregistré sur cette période.")),
+
+      h("section", {},
+        h("h2", {}, "Indicateur 19 · Suivi de la formation à distance"),
+        h("p", {}, `Situation des ${pluriel(actifs.length, "apprenant en formation", "apprenants en formation")} au ${dateLisible(aujourdhui())} : avancement sur la plateforme de formation, dernière connexion et dernier contact humain.`),
+        actifs.length
+          ? tableau(["Apprenant", "Parcours", "Avancement", "Dernière connexion", "Dernier contact", "Contacts sur la période"],
+              actifs.map((a) => [nomApprenant(a), a.parcours,
+                a.avancement_pct === null || a.avancement_pct === undefined ? "" : `${Math.round(a.avancement_pct)} %`,
+                a.derniere_connexion ? dateLisible(a.derniere_connexion) : "", a.date_dernier_contact ? dateLisible(a.date_dernier_contact) : "",
+                String(contactsParApprenant.get(a.id) || 0)]))
+          : message("info", "Aucun apprenant en formation actuellement.")),
+
+      h("section", {},
+        h("h2", {}, "Présentation à l'examen"),
+        h("p", {}, "Depuis la loi du 27 juin 2026, l'apprenant financé par le CPF doit se présenter à l'examen. Relances systématiques 30 jours, 7 jours et la veille de chaque session."),
+        tauxCohortes.data.some((l) => Number(l.inscrits_examen)) ? tableauTaux(tauxCohortes.data, org.taux_presence_depart) : message("info", "Aucun examen enregistré."),
+        examensPeriode.length
+          ? h("div", { class: "pile pile-serree" }, h("h3", {}, "Examens de la période"),
+              tableau(["Date", "Apprenant", "Parcours", "Présence", "Résultat"],
+                examensPeriode.map((a) => [dateLisible(a.date_examen), nomApprenant(a), a.parcours,
+                  LIBELLE_PRESENCE[a.presence_examen] || "à renseigner", LIBELLE_RESULTAT[a.resultat_examen] || ""])))
+          : null,
+        examensAVenir.length
+          ? h("div", { class: "pile pile-serree" }, h("h3", {}, "Examens à venir"),
+              tableau(["Date", "Apprenant", "Parcours", "Dernier contact"],
+                examensAVenir.map((a) => [dateLisible(a.date_examen), nomApprenant(a), a.parcours, a.date_dernier_contact ? dateLisible(a.date_dernier_contact) : ""])))
+          : null),
+
+      h("section", {},
+        h("h2", {}, "Indicateur 27 · Sous-traitance"),
+        h("p", {}, "Le suivi téléphonique est confié à Fil Rouge Apprenants dans le cadre d'un contrat de sous-traitance écrit, à joindre à ce dossier avec l'accord de traitement des données (RGPD). Les éléments personnels confiés par les apprenants ne figurent pas dans les comptes rendus transmis à l'organisme.")),
+
+      h("p", { class: "aide dossier-pied" }, "Numérotation des indicateurs : référentiel national qualité applicable au 1er novembre 2026. Ce dossier est une aide à la preuve ; l'appréciation de la conformité revient à l'organisme certificateur."));
+
+    const actions = h("div", { class: "actions-ligne actions-impression" },
+      h("button", { type: "button", class: "bouton", onclick: () => window.print() }, "Imprimer ou enregistrer en PDF"),
+      h("button", { type: "button", class: "bouton bouton-secondaire", onclick: exporterContacts }, "Contacts (Excel)"),
+      h("button", { type: "button", class: "bouton bouton-secondaire", onclick: exporterExamens }, "Examens (Excel)"));
+
+    afficher(
+      ...entete,
+      h("div", { class: "pile" },
+        h("div", { class: "masque-impression" },
+          h("p", { class: "surtitre" }, estAdmin ? lienInterne(`examens/${organismeId}`, "← Examens du client") : lienInterne("", "← Vos apprenants")),
+          h("p", { class: "chapo" }, "Ce dossier rassemble les preuves du suivi pour votre audit Qualiopi. Choisissez la période, puis imprimez-le ou enregistrez-le en PDF.")),
+        h("div", { class: "carte carte-large masque-impression" }, formulairePeriode),
+        actions,
+        dossier)
+    );
+    window.scrollTo(0, 0);
+  }
+
   async function accueilClient(profil) {
     afficher(h("p", { class: "chargement" }, "Chargement de vos apprenants…"));
 
-    const [organisme, apprenants] = await Promise.all([
-      sb.from("organismes").select("nom").eq("id", profil.organisme_id).maybeSingle(),
+    const [organisme, apprenants, tauxCohortes, examensAVenir] = await Promise.all([
+      sb.from("organismes").select("nom, taux_presence_depart").eq("id", profil.organisme_id).maybeSingle(),
       sb.from("vue_qui_rappeler").select("identifiant_externe, prenom, nom, parcours, jours_sans_contact, alerte"),
+      sb.from("vue_taux_examen").select("*"),
+      sb.from("vue_relances_examen").select("id", { count: "exact", head: true }),
     ]);
-    if (organisme.error || apprenants.error) {
-      return afficher(message("erreur", texteErreur(organisme.error || apprenants.error)));
-    }
+    const erreur = organisme.error || apprenants.error || tauxCohortes.error || examensAVenir.error;
+    if (erreur) return afficher(message("erreur", texteErreur(erreur)));
+    const totalExamens = totalTaux(tauxCohortes.data);
 
     afficher(
       h("div", { class: "pile" },
@@ -1294,6 +1864,17 @@
           h("p", { class: "chapo" }, "Le suivi de vos apprenants, mis à jour après chaque appel.")
         ),
         blocCompteurs(compterAlertes(apprenants.data), apprenants.data.length),
+        h("section", {},
+          h("div", { class: "section-titre" },
+            h("h2", {}, "Jusqu'à l'examen")),
+          h("div", { class: "actions-ligne" },
+            h("a", { href: "#/preuves", class: "bouton bouton-petit" }, "Dossier de preuves Qualiopi")),
+          h("div", { class: "compteurs" },
+            h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, examensAVenir.count || 0), h("span", { class: "compteur-libelle" }, "examens à venir")),
+            h("div", { class: "compteur compteur-vert" }, h("span", { class: "compteur-valeur" }, pourcentage(totalExamens.taux_presence)), h("span", { class: "compteur-libelle" }, "taux de présence")),
+            h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, pourcentage(totalExamens.taux_reussite)), h("span", { class: "compteur-libelle" }, "taux de réussite")),
+            h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, totalExamens.presents + totalExamens.absents), h("span", { class: "compteur-libelle" }, "examens renseignés"))),
+          tauxCohortes.data.some((l) => Number(l.inscrits_examen)) ? tableauTaux(tauxCohortes.data, organisme.data?.taux_presence_depart) : null),
         h("section", {},
           h("div", { class: "section-titre" },
             h("h2", {}, "Vos apprenants"),

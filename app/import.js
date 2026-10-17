@@ -25,9 +25,12 @@
     { cle: "derniere_connexion", libelle: "Dernière connexion", motsCles: ["derniere connexion", "dernière connexion", "last login", "derniere activite", "dernière activité", "last activity", "connexion"] },
     { cle: "date_dernier_contact", libelle: "Date du dernier contact", motsCles: ["dernier contact", "date du dernier contact", "date dernier contact", "contact"] },
     { cle: "statut", libelle: "Statut", motsCles: ["statut", "etat", "état", "status", "situation"] },
+    { cle: "date_examen", libelle: "Date d'examen", motsCles: ["date examen", "date d'examen", "date de l'examen", "examen", "session", "date session", "certification", "date certification", "passage"] },
+    { cle: "presence_examen", libelle: "Présence à l'examen", motsCles: ["presence", "présence", "presence examen", "présence examen", "presente", "présenté", "assiduite examen"] },
+    { cle: "resultat_examen", libelle: "Résultat de l'examen", motsCles: ["resultat", "résultat", "resultat examen", "résultat examen", "admis", "decision", "décision", "obtention"] },
   ];
 
-  const CHAMPS_DATE = ["date_inscription", "derniere_connexion", "date_dernier_contact"];
+  const CHAMPS_DATE = ["date_inscription", "derniere_connexion", "date_dernier_contact", "date_examen"];
 
   // ---------------------------------------------------------------------------
   // Texte : enlever accents, minuscules — pour comparer des en-têtes.
@@ -104,8 +107,11 @@
     const prises = new Set();
     const resultat = {};
     // Deux passes : égalité exacte d'abord, puis « contient ».
+    // La date d'examen est devinée en dernier : son mot-clé « examen » se
+    // retrouve aussi dans « Résultat examen » ou « Présence examen ».
+    const ordre = CHAMPS.filter((c) => c.cle !== "date_examen").concat(CHAMPS.filter((c) => c.cle === "date_examen"));
     for (const passe of ["exact", "contient"]) {
-      for (const champ of CHAMPS) {
+      for (const champ of ordre) {
         if (resultat[champ.cle] !== undefined) continue;
         const mots = champ.motsCles.map(normaliser);
         const index = norm.findIndex((e, i) => !prises.has(i) && mots.some((m) =>
@@ -162,6 +168,25 @@
     return { ok: false, erreur: `statut inconnu « ${valeur} » (attendu : actif, terminé ou abandon)` };
   }
 
+  // Présence à l'examen : « présent », « oui », « absent », « non »...
+  function lirePresence(valeur) {
+    const v = normaliser(valeur);
+    if (!v) return { ok: true, valeur: null };
+    if (/absen|non presente?|^non$|^n$|excuse|defaillant/.test(v)) return { ok: true, valeur: "absent" };
+    if (/present|^oui$|^o$|^x$|^1$/.test(v)) return { ok: true, valeur: "present" };
+    return { ok: false, erreur: `présence inconnue « ${valeur} » (attendu : présent ou absent)` };
+  }
+
+  // Résultat : l'échec est testé en premier (« non admis » contient « admis »).
+  function lireResultat(valeur) {
+    const v = normaliser(valeur);
+    if (!v) return { ok: true, valeur: null };
+    if (/non admis|non valide|non obtenu|echec|echoue|ajourne|refuse|insuffisant|^ko$|^0$/.test(v)) return { ok: true, valeur: "echoue" };
+    if (/admis|reussi|valide|obtenu|certifie|diplome|^ok$|^1$/.test(v)) return { ok: true, valeur: "reussi" };
+    if (/attente|en cours|inconnu/.test(v)) return { ok: true, valeur: null };
+    return { ok: false, erreur: `résultat inconnu « ${valeur} » (attendu : réussi ou échoué)` };
+  }
+
   function nettoyerTelephone(valeur) {
     const v = String(valeur || "").trim();
     if (!v) return null;
@@ -215,6 +240,10 @@
           const r = lireStatut(brut);
           if (!r.ok) problemes.push(r.erreur);
           else if (r.valeur) sortie.statut = r.valeur;
+        } else if (champ.cle === "presence_examen" || champ.cle === "resultat_examen") {
+          const r = champ.cle === "presence_examen" ? lirePresence(brut) : lireResultat(brut);
+          if (!r.ok) problemes.push(r.erreur);
+          else sortie[champ.cle] = r.valeur;
         } else if (champ.cle === "telephone") {
           sortie.telephone = nettoyerTelephone(brut);
         } else if (champ.cle === "email") {
@@ -222,6 +251,19 @@
         } else {
           sortie[champ.cle] = brut || null;
         }
+      }
+
+      // Examen : un résultat implique la présence ; présence ou résultat sans date = incohérent.
+      if (sortie.resultat_examen && !sortie.presence_examen) sortie.presence_examen = "present";
+      if (sortie.resultat_examen && sortie.presence_examen === "absent") problemes.push("Examen : un apprenant absent ne peut pas avoir de résultat");
+      if ((sortie.presence_examen || sortie.resultat_examen) && !sortie.date_examen && champsUtilises.some((c) => c.cle === "date_examen")) {
+        problemes.push("Examen : présence ou résultat indiqué sans date d'examen");
+      }
+
+      // Examen : une cellule vide ne doit pas effacer ce qui a été saisi
+      // dans la plateforme (date, présence ou résultat renseignés à la main).
+      for (const cle of ["date_examen", "presence_examen", "resultat_examen"]) {
+        if (cle in sortie && sortie[cle] === null) delete sortie[cle];
       }
 
       // Identifiant : colonne choisie, sinon email, sinon prénom + nom.
@@ -248,7 +290,7 @@
     return { valides, erreurs, doublons };
   }
 
-  const api = { CHAMPS, normaliser, decoder, lireCsv, devinerSeparateur, devinerCorrespondance, lireDate, lireNombre, lireStatut, nettoyerTelephone, preparer };
+  const api = { CHAMPS, normaliser, decoder, lireCsv, devinerSeparateur, devinerCorrespondance, lireDate, lireNombre, lireStatut, lirePresence, lireResultat, nettoyerTelephone, preparer };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else racine.FilRougeImport = api;
 })(typeof window !== "undefined" ? window : globalThis);

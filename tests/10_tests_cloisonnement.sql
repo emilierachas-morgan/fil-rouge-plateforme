@@ -392,5 +392,81 @@ select tests.doit_etre_refuse(
   'sans double authentification : import refusé');
 rollback;
 
+
+\echo '\n== 11. Suivi jusqu''à l''examen (étape 5)'
+
+select tests.verifier(
+  (select string_agg(identifiant_externe || '=' || etape_relance || case when relance_faite then '(faite)' else '' end, ' ' order by jours_avant_examen)
+   from public.vue_relances_examen where organisme_id = 'a0000000-0000-4000-8000-000000000001')
+  = 'AH-010=J-1 AH-002=J-7 AH-005=J-30(faite)',
+  'relances : J-1, J-7 et J-30 repérées ; la relance J-30 de Nadia est faite (contact il y a 2 j)');
+select tests.verifier(
+  (select sum(presents) = 1 and sum(absents) = 1 and sum(reussis) = 1 and sum(a_renseigner) = 1 and sum(a_venir) = 3
+   from public.vue_taux_examen where organisme_id = 'a0000000-0000-4000-8000-000000000001'),
+  'Horizon : 1 présent, 1 absent, 1 réussite, 1 examen à renseigner, 3 à venir');
+select tests.verifier(
+  (select sum(presents) = 2 and sum(reussis) = 1 and sum(echoues) = 1
+   from public.vue_taux_examen where organisme_id = 'b0000000-0000-4000-8000-000000000002'),
+  'Boréal : 2 présents, 1 réussite, 1 échec');
+select tests.verifier(
+  (select taux_presence = 100 and taux_reussite = 50 from (
+     select round(100.0 * sum(presents) / nullif(sum(presents + absents), 0), 1) taux_presence,
+            round(100.0 * sum(reussis) / nullif(sum(reussis + echoues), 0), 1) taux_reussite
+     from public.vue_taux_examen where organisme_id = 'b0000000-0000-4000-8000-000000000002') t),
+  'Boréal : taux de présence 100 %, taux de réussite 50 %');
+select tests.doit_etre_refuse(
+  $$update public.apprenants set resultat_examen = 'reussi' where identifiant_externe = 'AH-006'$$,
+  'cohérence : pas de résultat pour un apprenant absent');
+select tests.doit_etre_refuse(
+  $$update public.apprenants set date_examen = null where identifiant_externe = 'AH-008'$$,
+  'cohérence : pas de présence sans date d''examen');
+
+begin;
+select tests.session('33333333-3333-4333-8333-333333333333');
+set local role authenticated;
+select tests.verifier(
+  (select count(*) from public.vue_relances_examen where organisme_id <> 'b0000000-0000-4000-8000-000000000002') = 0
+  and (select count(*) from public.vue_relances_examen) = 1,
+  'client Boréal : voit sa seule relance d''examen, aucune d''Horizon');
+select tests.verifier(
+  (select count(distinct organisme_id) from public.vue_taux_examen) = 1
+  and (select bool_and(organisme_id = 'b0000000-0000-4000-8000-000000000002') from public.vue_taux_examen),
+  'client Boréal : taux d''examen de son seul organisme');
+select tests.verifier(
+  tests.lignes_touchees($$update public.apprenants set presence_examen = 'present' where identifiant_externe = 'IB-102'$$) = 0,
+  'client : ne peut pas modifier la présence à l''examen');
+select tests.verifier(
+  tests.lignes_touchees($$update public.organismes set taux_presence_depart = 10$$) = 0,
+  'client : ne peut pas modifier son taux de départ');
+rollback;
+
+begin;
+select tests.session('44444444-4444-4444-8444-444444444444');
+set local role authenticated;
+select tests.verifier(
+  (select count(*) from public.vue_taux_examen where organisme_id = 'b0000000-0000-4000-8000-000000000002') = 0,
+  'appelante : ne voit aucun taux d''un organisme qui ne lui confie personne');
+select tests.verifier(
+  (select coalesce(sum(effectif), 0) from public.vue_taux_examen) = 3,
+  'appelante : les taux ne portent que sur ses 3 apprenants confiés');
+rollback;
+
+begin;
+select tests.session('11111111-1111-4111-8111-111111111111', 'aal2');
+set local role authenticated;
+select tests.verifier(
+  tests.lignes_touchees($$update public.apprenants set presence_examen = 'present', resultat_examen = 'reussi' where identifiant_externe = 'AH-003'$$) = 1,
+  'administratrice : renseigne présence et résultat');
+select tests.verifier(
+  (select sum(a_renseigner) from public.vue_taux_examen where organisme_id = 'a0000000-0000-4000-8000-000000000001') = 0,
+  'après saisie : plus aucun examen à renseigner chez Horizon');
+rollback;
+
+begin;
+set local role anon;
+select tests.doit_etre_refuse($$select * from public.vue_taux_examen$$, 'visiteur non connecté : aucun taux d''examen');
+select tests.doit_etre_refuse($$select * from public.vue_relances_examen$$, 'visiteur non connecté : aucune relance d''examen');
+rollback;
+
 \echo
 \echo 'TOUS LES TESTS SONT PASSÉS'

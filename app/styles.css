@@ -549,3 +549,51 @@ input[type="file"] { font: inherit; font-weight: 400; max-width: 100%; }
 .tableau tr:last-child td { border-bottom: none; }
 
 .liste-erreurs { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; }
+
+/* ---------- Examens (étape 5) ---------- */
+
+.pile-serree { display: flex; flex-direction: column; gap: 0.6rem; }
+h3 { font-size: 1.05rem; margin: 0.4rem 0 0; color: var(--texte); }
+.tableau .ligne-total td { font-weight: 700; border-top: 1px solid var(--filet); }
+.tableau td { vertical-align: top; }
+
+.ligne-edition { grid-column: 1 / -1; }
+.editeur-examen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 0.6rem;
+  align-items: end;
+  padding: 0.75rem;
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  background: var(--fond-doux);
+}
+.editeur-examen label { font-size: 0.85rem; }
+.editeur-examen > div { grid-column: 1 / -1; }
+@media (max-width: 34rem) { .editeur-examen { grid-template-columns: minmax(0, 1fr); } }
+
+.depliant > summary { cursor: pointer; color: var(--rouge); font-weight: 700; margin-bottom: 0.6rem; }
+
+/* ---------- Dossier de preuves Qualiopi ---------- */
+
+.dossier { display: flex; flex-direction: column; gap: 1.75rem; border-top: 2px solid var(--rouge); padding-top: 1.25rem; }
+.dossier section { display: flex; flex-direction: column; gap: 0.75rem; }
+.dossier section > p { margin: 0; }
+.dossier-pied { border-top: 1px solid var(--filet); padding-top: 0.75rem; }
+
+@media print {
+  @page { size: A4; margin: 14mm 12mm; }
+  html.affichage-redresse { filter: none; }
+  body { font-size: 10pt; display: block; }
+  .bandeau, .pied, .onglets, .masque-impression, .actions-impression { display: none !important; }
+  .contenu { max-width: none; padding: 0; }
+  .dossier { border-top: none; padding-top: 0; gap: 1rem; }
+  .dossier section { break-inside: auto; }
+  .dossier h2 { break-after: avoid; color: var(--rouge); font-size: 14pt; }
+  .tableau-defilant { overflow: visible; border: none; }
+  .tableau { font-size: 8.5pt; }
+  .tableau tr { break-inside: avoid; }
+  .tableau thead { display: table-header-group; }
+  .compteurs { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

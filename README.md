@@ -12,7 +12,8 @@ Le cahier des charges complet est dans le document « Plateforme Fil Rouge — C
 | 2. La connexion | Code par email, rôles, double authentification administratrice | Terminée |
 | 3. Prospects et clients | CRM commercial : liste, relances, fiche, historique des échanges | Terminée |
 | 4. Import et liste | Import CSV avec correspondance des colonnes, « Qui rappeler en premier ? » | Terminée |
-| 5. Fiche apprenant et appels | Historique, « Noter un appel » | À faire |
+| 5. Jusqu'à l'examen | Date d'examen, présence, résultat ; relances J-30 / J-7 / J-1 ; taux par cohorte ; dossier de preuves Qualiopi | Terminée |
+| 5 bis. Fiche apprenant et appels | Historique, « Noter un appel » | À faire |
 | 6. Portail client | Lecture seule, export CSV | À faire |
 | 7. Sécurité et mise en ligne | Plan Pro, nom de domaine, hébergement | À faire |
 
@@ -25,6 +26,7 @@ supabase/
     20261014000002_securite.sql   Cloisonnement : qui voit et modifie quoi
     20261014000003_double_authentification.sql  Droits admin seulement avec le second facteur
     20261015000004_crm_prospection.sql  Historique des échanges, création et suppression sécurisées
+    20261017000005_suivi_examen.sql     Examen (date, présence, résultat), relances J-30/J-7/J-1, taux par cohorte
   seed.sql                        Données 100 % fictives (2 clients, 3 prospects, 20 apprenants)
 app/                              Le site (HTML + JavaScript, sans compilation)
   index.html, app.js, styles.css
@@ -32,9 +34,9 @@ app/                              Le site (HTML + JavaScript, sans compilation)
   _headers                        En-têtes de sécurité pour l'hébergeur
 tests/
   00_simulation_supabase.sql      Recrée le minimum de Supabase pour tester en local
-  10_tests_cloisonnement.sql      74 vérifications d'accès
+  10_tests_cloisonnement.sql      90 vérifications d'accès et de calcul
   lancer_tests.sh                 Lance tout dans une base jetable
-  import.test.js                  14 tests de lecture des fichiers CSV (node tests/import.test.js)
+  import.test.js                  17 tests de lecture des fichiers CSV (node tests/import.test.js)
 ```
 
 ## Les tables
@@ -49,6 +51,8 @@ tests/
 | `notes_internes` | Ce qui ne doit pas remonter à l'organisme | Admin ; l'appelante pour ses propres appels. Jamais un client |
 | `journal` | Qui a créé, modifié, supprimé quoi et quand | Admin uniquement, écrit automatiquement |
 | `vue_qui_rappeler` | Apprenants actifs, jours sans contact, couleur | Selon les droits ci-dessus |
+| `vue_relances_examen` | Examens à venir, étape J-30 / J-7 / J-1, relance faite ou non | Selon les droits ci-dessus |
+| `vue_taux_examen` | Présents, absents, réussis et taux, par organisme et mois d'inscription | Selon les droits ci-dessus |
 
 ## Les automatismes
 
@@ -57,6 +61,13 @@ tests/
 - Chaque création, modification ou suppression est inscrite dans le journal, avec son auteur.
 - Supprimer un organisme (fin de contrat) efface ses apprenants, ses appels et les accès de ses comptes.
 - Les jours sont comptés à l'heure de Paris.
+
+## Suivi jusqu'à l'examen (étape 5)
+
+- **Onglet Examens** (administratrice) : relances à faire (J-30, J-7, J-1), examens passés à renseigner en un geste (présent / absent, puis réussi / échoué), taux par cohorte, examens à venir et passés, apprenants sans date. Le taux de présence avant Fil Rouge se saisit par client : c'est la base de l'option « résultat ».
+- **Relance faite** : un contact noté dans la fenêtre de l'étape (30, 7 ou 1 jour avant l'examen) suffit.
+- **Import** : trois nouvelles colonnes reconnues (date d'examen, présence, résultat). Une cellule vide n'efface jamais ce qui a été saisi dans la plateforme.
+- **Dossier de preuves Qualiopi** (`#/preuves/<id>`, et `#/preuves` côté client) : synthèse, indicateur 12 (chaque contact daté, résultat, suite), indicateur 19 (avancement, connexion, dernier contact), présentation à l'examen, indicateur 27 (sous-traitance). Impression ou PDF depuis le navigateur, et deux exports pour Excel. Les notes internes n'y figurent jamais.
 
 ## Lancer les tests
 

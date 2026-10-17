@@ -126,3 +126,29 @@ insert into public.echanges_commerciaux (organisme_id, date_echange, canal, resu
   ('b0000000-0000-4000-8000-000000000002', prive.aujourdhui() - 6,  'email',     'Réponse positive à l''email n°1. Export de 10 lignes reçu.'),
   ('c0000000-0000-4000-8000-000000000003', prive.aujourdhui() - 2,  'email',     'Email n°1 envoyé.'),
   ('c0000000-0000-4000-8000-000000000005', prive.aujourdhui() - 20, 'telephone', 'Pas de budget cette année.');
+
+-- -----------------------------------------------------------------------------
+-- Examens (étape 5) — fictifs, dates calculées à partir d'aujourd'hui
+-- -----------------------------------------------------------------------------
+
+update public.organismes set taux_presence_depart = 70 where id = 'a0000000-0000-4000-8000-000000000001';
+update public.organismes set taux_presence_depart = 75 where id = 'b0000000-0000-4000-8000-000000000002';
+
+update public.apprenants as a set
+  date_examen = prive.aujourdhui() + e.decalage,
+  presence_examen = e.presence::public.presence_examen,
+  resultat_examen = e.resultat::public.resultat_examen
+from (values
+  -- Académie Horizon
+  ('AH-010',   1, null,      null),      -- examen demain : relance J-1
+  ('AH-002',   6, null,      null),      -- dans 6 jours : relance J-7
+  ('AH-005',  25, null,      null),      -- dans 25 jours : relance J-30 (déjà faite)
+  ('AH-003',  -3, null,      null),      -- passé, présence à renseigner
+  ('AH-006', -10, 'absent',  null),
+  ('AH-008', -20, 'present', 'reussi'),
+  -- Institut Boréal
+  ('IB-102',  12, null,      null),
+  ('IB-104', -15, 'present', 'echoue'),
+  ('IB-108', -15, 'present', 'reussi')
+) as e (identifiant, decalage, presence, resultat)
+where a.identifiant_externe = e.identifiant;
