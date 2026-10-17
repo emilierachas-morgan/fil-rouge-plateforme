@@ -581,4 +581,25 @@ select tests.doit_etre_refuse($$select public.je_suis_admin()$$, 'visiteur non c
 rollback;
 
 \echo
+\echo '\n== 14. Contact multicanal'
+
+begin;
+select tests.session('44444444-4444-4444-8444-444444444444');
+set local role authenticated;
+select tests.verifier(public.noter_appel('a1000000-0000-4000-8000-000000000001', 'messagerie', 'whatsapp', now(),
+  'Message WhatsApp envoyé : point du mois.', null, null, null) is not null, 'appelante : enregistre un message WhatsApp');
+select tests.verifier(
+  (select count(*) from public.appels where apprenant_id = 'a1000000-0000-4000-8000-000000000001' and canal = 'whatsapp') = 1,
+  'appelante : un message WhatsApp est noté dans l''historique');
+select tests.verifier(public.noter_appel('a1000000-0000-4000-8000-000000000001', 'joint', 'visio', now(),
+  'Point en visio.', null, null, null) is not null, 'appelante : enregistre un point en visio');
+select tests.verifier(
+  (select count(*) from public.appels where apprenant_id = 'a1000000-0000-4000-8000-000000000001' and canal = 'visio') = 1,
+  'appelante : un rendez-vous en visio est noté dans l''historique');
+select tests.doit_etre_refuse(
+  $$select public.noter_appel('a1000000-0000-4000-8000-000000000002', 'messagerie', 'whatsapp', now(), 'x', null, null, null)$$,
+  'appelante : pas de message noté pour un apprenant non confié');
+rollback;
+
+\echo
 \echo 'TOUS LES TESTS SONT PASSÉS'

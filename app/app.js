@@ -1348,7 +1348,7 @@
   const LIBELLE_RESULTAT = { reussi: "Réussi", echoue: "Échoué" };
   const COULEUR_RELANCE = { "J-1": "rouge", "J-7": "orange", "J-30": "neutre" };
   const LIBELLE_RESULTAT_APPEL = { joint: "Joint·e", messagerie: "Message laissé", injoignable: "Injoignable", refuse_suivi: "Refuse le suivi" };
-  const LIBELLE_CANAL_APPEL = { telephone: "Téléphone", sms: "SMS", email: "Email" };
+  const LIBELLE_CANAL_APPEL = { telephone: "Téléphone", whatsapp: "WhatsApp", sms: "SMS", email: "Email", visio: "Visio" };
   const LIBELLE_STATUT = { actif: "En formation", termine: "Terminé", abandon: "Abandon" };
 
   function nomApprenant(a) {
@@ -2016,7 +2016,9 @@
       h("span", { class: "ligne-titre" }, dateHeureComplete(appel.date_appel)),
       h("span", { class: "pastilles" },
         pastille("neutre", LIBELLE_CANAL_APPEL[appel.canal] || appel.canal),
-        pastille(COULEUR_RESULTAT_APPEL[appel.resultat] || "neutre", LIBELLE_RESULTAT_APPEL[appel.resultat] || appel.resultat)),
+        appel.resultat === "messagerie" && NOTE_MESSAGE_ENVOYE[appel.canal]
+          ? pastille("vert", "Message envoyé")
+          : pastille(COULEUR_RESULTAT_APPEL[appel.resultat] || "neutre", LIBELLE_RESULTAT_APPEL[appel.resultat] || appel.resultat)),
       appel.note_client ? h("span", { class: "ligne-detail texte-libre" }, appel.note_client) : null,
       appel.prochaine_action || appel.date_prochaine_action
         ? h("span", { class: "ligne-detail" }, "Suite : ", [appel.prochaine_action, appel.date_prochaine_action ? `le ${dateLisible(appel.date_prochaine_action)}` : null].filter(Boolean).join(" "))
@@ -2024,6 +2026,101 @@
       noteInterne ? h("div", { class: "ligne-detail note-interne" }, h("strong", {}, "Note interne · "), noteInterne) : null,
       suppression,
     ].filter(Boolean));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bloc « Contacter » de la fiche apprenant (étape 8) : appel, WhatsApp, SMS,
+  // email, avec un message tout prêt et modifiable. Tout est gratuit : le bouton
+  // ouvre l'application du téléphone avec le texte écrit, la personne n'a plus
+  // qu'à appuyer sur « Envoyer ». Ensuite, un clic l'ajoute à l'historique
+  // (preuve de suivi Qualiopi). Fonctions pures dans contact.js.
+  // ---------------------------------------------------------------------------
+  const NOTE_MESSAGE_ENVOYE = { whatsapp: "Message WhatsApp envoyé", sms: "SMS envoyé", email: "Email envoyé" };
+
+  function blocContacter(a, rafraichir) {
+    const C = window.FilRougeContact;
+    const surIphone = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const moi = (etat.profil?.nom_affiche || "").trim().split(" ")[0] || (etat.profil?.role === "admin" ? "Émilie" : "");
+    const contexte = { prenom: a.prenom, moi, organisme: a.organismes?.nom, date_examen: a.date_examen, avancement_pct: a.avancement_pct };
+
+    const choixModeles = Object.fromEntries(Object.entries(C.MODELES).map(([cle, m]) => [cle, m.titre]));
+    const modele = champChoix("contact-modele", "Message tout prêt", choixModeles, C.modeleConseille(a, aujourdhui()));
+    const texte = champTexte("contact-texte", "Texte du message (modifiable)", "", { multiligne: true });
+    texte.champ.rows = 6;
+    let objet = "";
+
+    const appeler = a.telephone ? h("a", { class: "bouton", href: `tel:${a.telephone.replace(/[^\d+]/g, "")}` }, `📞 Appeler · ${a.telephone}`) : null;
+    const whatsapp = h("a", { class: "bouton bouton-secondaire", target: "_blank", rel: "noopener" }, "💬 WhatsApp");
+    const sms = h("a", { class: "bouton bouton-secondaire" }, "✉️ SMS");
+    const email = h("a", { class: "bouton bouton-secondaire" }, "📧 Email");
+    const copierTexte = h("button", { type: "button", class: "bouton-lien" }, "Copier le texte");
+    copierTexte.addEventListener("click", () => copier(texte.champ.value, copierTexte));
+
+    function majLiens() {
+      const liens = [
+        [whatsapp, C.lienWhatsApp(a.telephone, texte.champ.value)],
+        [sms, C.lienSms(a.telephone, texte.champ.value, surIphone)],
+        [email, C.lienEmail(a.email, objet, texte.champ.value)],
+      ];
+      for (const [lien, adresse] of liens) {
+        lien.hidden = !adresse;
+        if (adresse) lien.setAttribute("href", adresse); else lien.removeAttribute("href");
+      }
+    }
+    function chargerModele() {
+      const r = C.remplir(modele.champ.value, contexte);
+      texte.champ.value = r.texte;
+      objet = r.objet;
+      majLiens();
+    }
+    modele.champ.addEventListener("change", chargerModele);
+    texte.champ.addEventListener("input", majLiens);
+    chargerModele();
+
+    // Après l'envoi : proposer de l'ajouter à l'historique.
+    const zoneConfirmation = h("div");
+    function proposerHistorique(canal) {
+      const zone = h("div");
+      const oui = h("button", { type: "button", class: "bouton bouton-petit" }, "Oui, l'ajouter à l'historique");
+      const non = h("button", { type: "button", class: "bouton bouton-secondaire bouton-petit" }, "Non, pas envoyé");
+      non.addEventListener("click", () => zoneConfirmation.replaceChildren());
+      oui.addEventListener("click", async () => {
+        occupe(oui, true, "Enregistrement…");
+        const { error } = await sb.rpc("noter_appel", {
+          p_apprenant: a.id,
+          p_resultat: "messagerie",
+          p_canal: canal,
+          p_date_appel: new Date().toISOString(),
+          p_note_client: `${NOTE_MESSAGE_ENVOYE[canal]} : ${C.MODELES[modele.champ.value].titre.toLowerCase()}.`,
+          p_note_interne: "",
+          p_prochaine_action: "",
+          p_date_prochaine_action: null,
+        });
+        occupe(oui, false);
+        if (error) return signaler(zone, "erreur", texteErreur(error));
+        rafraichir(`${NOTE_MESSAGE_ENVOYE[canal]} : ajouté à l'historique.`);
+      });
+      zoneConfirmation.replaceChildren(
+        h("div", { class: "message message-action pile pile-serree" },
+          h("strong", {}, `${NOTE_MESSAGE_ENVOYE[canal]} ?`),
+          h("div", { class: "actions-ligne" }, oui, non),
+          zone));
+    }
+    whatsapp.addEventListener("click", () => setTimeout(() => proposerHistorique("whatsapp"), 300));
+    sms.addEventListener("click", () => setTimeout(() => proposerHistorique("sms"), 300));
+    email.addEventListener("click", () => setTimeout(() => proposerHistorique("email"), 300));
+
+    const manque = !a.telephone && !a.email ? "Pas de numéro de téléphone ni d'adresse email sur la fiche."
+      : !a.telephone ? "Pas de numéro de téléphone sur la fiche." : !a.email ? "Pas d'adresse email sur la fiche." : null;
+
+    return h("section", {},
+      h("div", { class: "section-titre" }, h("h2", {}, "Contacter")),
+      h("div", { class: "carte carte-large pile pile-serree" },
+        h("div", { class: "actions-ligne" }, appeler, whatsapp, sms, email),
+        manque ? h("p", { class: "aide" }, manque) : null,
+        h("div", { class: "formulaire" }, modele.bloc, texte.bloc),
+        h("p", { class: "aide" }, "Le bouton ouvre WhatsApp, vos SMS ou votre messagerie avec ce texte déjà écrit : vous n'avez plus qu'à envoyer. ", copierTexte),
+        zoneConfirmation));
   }
 
   async function ecranApprenant(id, info) {
@@ -2104,10 +2201,6 @@
           ligneHistorique(ap, { peutSupprimer: estAdmin, apresSuppression: () => rafraichir("Appel supprimé.") })))
       : message("info", "Aucun appel pour l'instant.");
 
-    const coordonnees = h("div", { class: "actions-ligne" },
-      a.telephone ? h("a", { href: `tel:${a.telephone.replace(/[^\d+]/g, "")}`, class: "bouton" }, `Appeler · ${a.telephone}`) : null,
-      a.email ? h("a", { href: `mailto:${a.email}`, class: "bouton bouton-secondaire" }, "Écrire un email") : null);
-
     afficher(
       ...entete(),
       h("div", { class: "pile" },
@@ -2125,7 +2218,7 @@
           ? h("p", { class: "message message-action" }, lienInterne(`apprenant/${suivantId}`, "Apprenant suivant dans la liste →"))
           : null,
 
-        peutNoter ? coordonnees : null,
+        peutNoter ? blocContacter(a, rafraichir) : null,
 
         h("div", { class: "compteurs" },
           h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, a.avancement_pct === null || a.avancement_pct === undefined ? "—" : `${Math.round(a.avancement_pct)} %`), h("span", { class: "compteur-libelle" }, "avancement")),
