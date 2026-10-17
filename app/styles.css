@@ -890,3 +890,57 @@ input:focus, select:focus, textarea:focus { border-color: var(--violet); }
 /* Titres de section : un filet violet fin dessous */
 .section-titre { border-bottom: 1px solid var(--violet); padding-bottom: 0.35rem; }
 .liste { border-top: none; }
+
+/* ---------- Onglets de la fiche élève : Suivi des appels / Coaching ---------- */
+
+.barre-onglets {
+  display: flex;
+  gap: 1.75rem;
+  border-bottom: 1px solid var(--violet);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.onglet-fiche {
+  font: inherit;
+  font-family: var(--police-titre);
+  font-size: 1.35rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.25rem 0 0.5rem;
+  color: var(--texte-doux);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.onglet-fiche:hover { color: var(--violet); }
+.onglet-fiche[aria-selected="true"] { color: var(--violet); border-bottom-color: var(--violet); }
+.onglet-fiche:focus-visible { outline: 2px solid var(--violet); outline-offset: 3px; }
+.panneau-onglet { padding-top: 1.5rem; }
+
+/* Sous-onglets du coaching : pastilles rose clair */
+.onglets-coaching .barre-onglets { border-bottom: none; gap: 0.5rem; flex-wrap: wrap; overflow: visible; }
+.onglets-coaching .onglet-fiche {
+  font-family: var(--police-texte);
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--filet);
+  border-radius: 999px;
+  margin: 0;
+  color: var(--texte);
+}
+.onglets-coaching .onglet-fiche:hover { border-color: var(--violet); }
+.onglets-coaching .onglet-fiche[aria-selected="true"] { background: var(--rose); border-color: var(--violet); color: var(--violet); }
+.onglets-coaching .panneau-onglet { padding-top: 1rem; }
+@media (prefers-reduced-motion: no-preference) {
+  .panneau-onglet:not([hidden]) { animation: apparition 140ms ease-out; }
+}
+
+/* Téléphone : bouton Menu réduit à son icône pour garder le nom sur la même ligne */
+@media (max-width: 30rem) {
+  .bouton-menu { padding: 0.6rem 0.65rem; }
+  .bouton-menu-texte { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .marque { font-size: 1.3rem; padding: 0.7rem 1.3rem 0.8rem 1.5rem; }
+  .bandeau-interieur { gap: 0.25rem 0.6rem; }
+}

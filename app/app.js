@@ -610,7 +610,7 @@
     if (morceaux[0] === "import") return { nom: "import", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "examens") return { nom: "examens", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "acces") return { nom: "acces" };
-    if (morceaux[0] === "apprenant" && UUID.test(morceaux[1] || "")) return { nom: "apprenant", id: morceaux[1] };
+    if (morceaux[0] === "apprenant" && UUID.test(morceaux[1] || "")) return { nom: "apprenant", id: morceaux[1], onglet: morceaux[2] || null, partie: morceaux[3] || null };
     if (morceaux[0] === "preuves") return { nom: "preuves", id: UUID.test(morceaux[1] || "") ? morceaux[1] : null };
     if (morceaux[0] === "eleves" && UUID.test(morceaux[1] || "")) return { nom: "eleves", id: morceaux[1] };
     if (morceaux[0] === "coaching") return { nom: "coaching", type: morceaux[1] || "stage", id: UUID.test(morceaux[2] || "") ? morceaux[2] : null };
@@ -2198,8 +2198,7 @@
          a.presence_examen ? LIBELLE_PRESENCE[a.presence_examen] : null,
          a.resultat_examen ? LIBELLE_RESULTAT[a.resultat_examen] : null].filter(Boolean).join(" · ")
       : "Pas encore de date d'examen.";
-    const blocExamen = h("section", {},
-      h("div", { class: "section-titre" }, h("h2", {}, "Examen")),
+    const blocExamen = h("div", { class: "pile-serree" },
       h("p", {}, resumeExamen),
       estAdmin ? editeurExamen(a, () => rafraichir("Examen enregistré.")) : null);
 
@@ -2209,6 +2208,29 @@
       ? h("ul", { class: "liste" }, appels.data.map((ap) =>
           ligneHistorique(ap, { peutSupprimer: estAdmin, apresSuppression: () => rafraichir("Appel supprimé.") })))
       : message("info", "Aucun appel pour l'instant.");
+
+    // --- Deux onglets : Suivi (appels) et Coaching (stage, examen, projet, organisation) ---
+    const memo = etat.ongletFiche && etat.ongletFiche.id === id ? etat.ongletFiche : { id, onglet: lireRoute().onglet || "suivi", partie: lireRoute().partie || "stage" };
+    etat.ongletFiche = memo;
+    const panneauSuivi = h("div", { class: "pile" },
+      peutNoter ? blocContacter(a, rafraichir) : null,
+      peutNoter
+        ? h("section", {},
+            h("div", { class: "section-titre" }, h("h2", {}, "Noter un appel")),
+            h("div", { class: "carte carte-large" }, formulaireAppel(a, () => rafraichir("Appel enregistré. Le compteur repart à zéro."))))
+        : null,
+      h("section", {},
+        h("div", { class: "section-titre" }, h("h2", {}, "Historique des appels"), h("p", {}, pluriel(appels.data.length, "appel", "appels"))),
+        historique),
+      blocConfie,
+      blocStatut);
+    const panneauCoaching = blocCoachingFiche(a, coaching.data, peutNoter, rafraichir, blocExamen, memo);
+    const ongletsFiche = barreOnglets("fiche", [["suivi", "Suivi des appels", panneauSuivi], ["coaching", "Coaching", panneauCoaching]],
+      memo.onglet, (cle) => {
+        memo.onglet = cle;
+        const cible = `#/apprenant/${a.id}/${cle}${cle === "coaching" ? `/${memo.partie}` : ""}`;
+        if (window.location.hash !== cible) history.replaceState(null, "", cible);
+      });
 
     afficher(
       ...entete(),
@@ -2227,28 +2249,13 @@
           ? h("p", { class: "message message-action" }, lienInterne(`apprenant/${suivantId}`, "Apprenant suivant dans la liste →"))
           : null,
 
-        peutNoter ? blocContacter(a, rafraichir) : null,
-
         h("div", { class: "compteurs" },
-          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, a.avancement_pct === null || a.avancement_pct === undefined ? "—" : `${Math.round(a.avancement_pct)} %`), h("span", { class: "compteur-libelle" }, "avancement")),
+          h("div", { class: "compteur" }, h("span", { class: "compteur-valeur" }, a.avancement_pct === null || a.avancement_pct === undefined ? "—" : `${Math.round(a.avancement_pct)} %`), h("span", { class: "compteur-libelle" }, "avancement")),
           h("div", { class: "compteur" }, h("span", { class: "compteur-valeur compteur-valeur-date" }, a.derniere_connexion ? dateLisible(a.derniere_connexion) : "—"), h("span", { class: "compteur-libelle" }, "dernière connexion")),
           h("div", { class: "compteur" }, h("span", { class: "compteur-valeur compteur-valeur-date" }, a.date_dernier_contact ? dateLisible(a.date_dernier_contact) : "—"), h("span", { class: "compteur-libelle" }, "dernier contact")),
           h("div", { class: "compteur" }, h("span", { class: "compteur-valeur compteur-valeur-date" }, a.date_examen ? dateLisible(a.date_examen) : "—"), h("span", { class: "compteur-libelle" }, "examen"))),
 
-        peutNoter
-          ? h("section", {},
-              h("div", { class: "section-titre" }, h("h2", {}, "Noter un appel")),
-              h("div", { class: "carte carte-large" }, formulaireAppel(a, () => rafraichir("Appel enregistré. Le compteur repart à zéro."))))
-          : null,
-
-        h("section", {},
-          h("div", { class: "section-titre" }, h("h2", {}, "Historique des appels"), h("p", {}, pluriel(appels.data.length, "appel", "appels"))),
-          historique),
-
-        blocCoaching(a, coaching.data, peutNoter, (texte) => rafraichir(texte)),
-        blocExamen,
-        blocConfie,
-        blocStatut)
+        ongletsFiche)
     );
     window.scrollTo(0, 0);
   }
@@ -2509,9 +2516,9 @@
   function lireGroupesOuverts() {
     try {
       const v = JSON.parse(localStorage.getItem(CLE_GROUPES) || "null");
-      return Array.isArray(v) ? v : ["eleves", "coaching"];
+      return Array.isArray(v) ? v : ["eleves"];
     } catch (e) {
-      return ["eleves", "coaching"];
+      return ["eleves"];
     }
   }
   function memoriserGroupes() {
@@ -2586,7 +2593,8 @@
     menu.replaceChildren(
       h("div", { class: "menu-haut" },
         lien("", "Tableau de bord"),
-        lien("rappels", "À rappeler", d.urgents ? nombre(d.urgents, true) : null)),
+        lien("rappels", "À rappeler", d.urgents ? nombre(d.urgents, true) : null),
+        lien("examens", "Relances d'examen")),
       groupe("prospects", "Prospects", [
         lien("prospection", "Tous les centres à démarcher"),
         lien("nouveau", "Ajouter un centre"),
@@ -2600,12 +2608,6 @@
         d.dossiers.length
           ? d.dossiers.map((o) => lien(`eleves/${o.id}`, [h("span", { class: "icone-dossier", "aria-hidden": "true" }), o.nom], nombre(o.n)))
           : vide("Les dossiers apparaissent dès qu'un client a des élèves."),
-      ]),
-      groupe("coaching", "Coaching", [
-        lien("coaching/stage", "Stage"),
-        lien("examens", "Examen"),
-        lien("coaching/projet", "Projet"),
-        lien("coaching/organisation", "Organisation"),
       ]));
   }
 
@@ -2839,82 +2841,137 @@
     window.scrollTo(0, 0);
   }
 
-  // Partie « Coaching » de la fiche apprenant : stage, projet, organisation.
-  function blocCoaching(a, fiche, peutModifier, rafraichir) {
+  // ---------------------------------------------------------------------------
+  // Onglets (fiche apprenant). Changer d'onglet ne recharge rien : l'adresse
+  // est mise à jour pour pouvoir y revenir (#/apprenant/<id>/coaching/stage).
+  // ---------------------------------------------------------------------------
+  function barreOnglets(nom, onglets, actif, surChangement) {
+    const boutons = [];
+    const panneaux = [];
+    const choisir = (cle, focus) => {
+      onglets.forEach(([c], i) => {
+        const oui = c === cle;
+        boutons[i].setAttribute("aria-selected", String(oui));
+        boutons[i].tabIndex = oui ? 0 : -1;
+        panneaux[i].hidden = !oui;
+        if (oui && focus) boutons[i].focus();
+      });
+      surChangement(cle);
+    };
+    onglets.forEach(([cle, texte, contenuPanneau], i) => {
+      const b = h("button", { type: "button", role: "tab", class: "onglet-fiche", id: `onglet-${nom}-${cle}`, "aria-controls": `panneau-${nom}-${cle}` }, texte);
+      b.addEventListener("click", () => choisir(cle));
+      b.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        const j = (i + (e.key === "ArrowRight" ? 1 : onglets.length - 1)) % onglets.length;
+        choisir(onglets[j][0], true);
+      });
+      boutons.push(b);
+      panneaux.push(h("div", { role: "tabpanel", id: `panneau-${nom}-${cle}`, "aria-labelledby": `onglet-${nom}-${cle}`, class: "panneau-onglet" }, contenuPanneau));
+    });
+    const bloc = h("div", { class: `onglets-fiche onglets-${nom}` },
+      h("div", { role: "tablist", class: "barre-onglets", "aria-label": nom === "fiche" ? "Parties de la fiche" : "Coaching" }, boutons),
+      panneaux);
+    const depart = onglets.some(([c]) => c === actif) ? actif : onglets[0][0];
+    onglets.forEach(([c], i) => {
+      boutons[i].setAttribute("aria-selected", String(c === depart));
+      boutons[i].tabIndex = c === depart ? 0 : -1;
+      panneaux[i].hidden = c !== depart;
+    });
+    return bloc;
+  }
+
+  // Onglet « Coaching » de la fiche : Stage, Examen, Projet, Organisation.
+  function blocCoachingFiche(a, fiche, peutModifier, rafraichir, contenuExamen, memo) {
     const f = fiche || {};
-    if (!peutModifier) {
-      const lignes = [
-        ["Stage", [LIBELLE_STAGE[f.stage_statut || "non_concerne"], ECRANS_COACHING.stage.detail(f)].filter(Boolean).join(" · ")],
-        ["Projet", ECRANS_COACHING.projet.detail(f) || (f.projet_situation ? LIBELLE_SITUATION[f.projet_situation] : "")],
-        ["Organisation", ECRANS_COACHING.organisation.detail(f)],
-      ].filter(([, v]) => v);
-      return h("section", {},
-        h("div", { class: "section-titre" }, h("h2", {}, "Coaching")),
-        lignes.length
-          ? h("dl", { class: "resume-coaching" }, lignes.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))
-          : message("info", "Pas encore d'informations de coaching."));
+    const vide = (v) => (v === undefined || v === null ? "" : v);
+    const texte = (c) => c.champ.value.trim() || null;
+    const majAdresse = () => {
+      const cible = `#/apprenant/${a.id}/${memo.onglet}${memo.onglet === "coaching" ? `/${memo.partie}` : ""}`;
+      if (window.location.hash !== cible) history.replaceState(null, "", cible);
+    };
+
+    // Un formulaire par partie ; chacun n'enregistre que ses propres champs.
+    function formulairePartie(champs, valeurs, verifier) {
+      const zone = h("div");
+      const bouton = h("button", { class: "bouton", type: "submit" }, "Enregistrer");
+      const form = h("form", { class: "formulaire", novalidate: true }, champs, zone, bouton);
+      form.addEventListener("submit", async (evenement) => {
+        evenement.preventDefault();
+        const probleme = verifier ? verifier() : null;
+        if (probleme) return signaler(zone, "erreur", probleme);
+        signaler(zone);
+        occupe(bouton, true, "Enregistrement…");
+        const { error } = await sb.from("coaching").upsert({ apprenant_id: a.id, organisme_id: a.organisme_id, ...valeurs() }, { onConflict: "apprenant_id" });
+        occupe(bouton, false);
+        if (error) return signaler(zone, "erreur", texteErreur(error));
+        rafraichir("Coaching enregistré.");
+      });
+      return h("div", { class: "carte carte-large" }, form);
+    }
+    const lecture = (lignes) => {
+      const utiles = lignes.filter(([, v]) => v);
+      return utiles.length
+        ? h("dl", { class: "resume-coaching" }, utiles.map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]))
+        : message("info", "Rien de renseigné pour l'instant.");
+    };
+
+    // --- Stage ---
+    let stage;
+    if (peutModifier) {
+      const statut = champChoix("co-stage-statut", "Situation", LIBELLE_STAGE, f.stage_statut || "non_concerne");
+      const structure = champTexte("co-stage-structure", "Structure d'accueil", vide(f.stage_structure), { placeholder: "Ex. : Crèche Les Petits Pas" });
+      const debut = champTexte("co-stage-debut", "Début du stage", vide(f.stage_debut), { type: "date" });
+      const fin = champTexte("co-stage-fin", "Fin du stage", vide(f.stage_fin), { type: "date" });
+      stage = formulairePartie([statut.bloc, structure.bloc, h("div", { class: "deux-colonnes" }, debut.bloc, fin.bloc)],
+        () => ({ stage_statut: statut.champ.value, stage_structure: texte(structure), stage_debut: debut.champ.value || null, stage_fin: fin.champ.value || null }),
+        () => (debut.champ.value && fin.champ.value && fin.champ.value < debut.champ.value ? "La fin du stage est avant son début." : null));
+    } else {
+      stage = lecture([["Situation", LIBELLE_STAGE[f.stage_statut || "non_concerne"]], ["Structure", f.stage_structure],
+        ["Dates", [f.stage_debut ? `du ${dateLisible(f.stage_debut)}` : null, f.stage_fin ? `au ${dateLisible(f.stage_fin)}` : null].filter(Boolean).join(" ")]]);
     }
 
-    const zone = h("div");
-    const vide = (v) => (v === undefined || v === null ? "" : v);
-    const stageStatut = champChoix("co-stage-statut", "Situation", LIBELLE_STAGE, f.stage_statut || "non_concerne");
-    const stageStructure = champTexte("co-stage-structure", "Structure d'accueil", vide(f.stage_structure), { placeholder: "Ex. : Crèche Les Petits Pas" });
-    const stageDebut = champTexte("co-stage-debut", "Début du stage", vide(f.stage_debut), { type: "date" });
-    const stageFin = champTexte("co-stage-fin", "Fin du stage", vide(f.stage_fin), { type: "date" });
+    // --- Projet ---
+    let projet;
+    if (peutModifier) {
+      const metier = champTexte("co-projet-metier", "Métier visé", vide(f.projet_metier), { placeholder: "Ex. : auxiliaire de crèche" });
+      const situation = champChoix("co-projet-situation", "Situation de l'élève", { "": "— Non renseignée —", ...LIBELLE_SITUATION }, f.projet_situation || "");
+      const note = champTexte("co-projet-note", "Ce qui le motive, ses freins (visible par l'organisme)", vide(f.projet_note), { multiligne: true });
+      projet = formulairePartie([metier.bloc, situation.bloc, note.bloc],
+        () => ({ projet_metier: texte(metier), projet_situation: situation.champ.value || null, projet_note: texte(note) }));
+    } else {
+      projet = lecture([["Métier visé", f.projet_metier], ["Situation", f.projet_situation ? LIBELLE_SITUATION[f.projet_situation] : null], ["Motivation", f.projet_note]]);
+    }
 
-    const metier = champTexte("co-projet-metier", "Métier visé", vide(f.projet_metier), { placeholder: "Ex. : auxiliaire de crèche" });
-    const situation = champChoix("co-projet-situation", "Situation de l'élève", { "": "— Non renseignée —", ...LIBELLE_SITUATION }, f.projet_situation || "");
-    const noteProjet = champTexte("co-projet-note", "Ce qui le motive, ses freins (visible par l'organisme)", vide(f.projet_note), { multiligne: true });
+    // --- Organisation ---
+    let organisation;
+    if (peutModifier) {
+      const heures = champTexte("co-orga-heures", "Heures par semaine", vide(f.orga_heures_semaine), { type: "number", inputmode: "numeric" });
+      heures.champ.min = "0";
+      heures.champ.max = "60";
+      const finVisee = champTexte("co-orga-fin", "Fin de parcours visée", vide(f.orga_date_fin_visee), { type: "date" });
+      const creneaux = champTexte("co-orga-creneaux", "Créneaux disponibles", vide(f.orga_creneaux), { placeholder: "Ex. : mardi et jeudi soir" });
+      const objectif = champTexte("co-orga-objectif", "Objectif du mois", vide(f.orga_objectif), { placeholder: "Ex. : terminer les modules 4 et 5" });
+      organisation = formulairePartie([h("div", { class: "deux-colonnes" }, heures.bloc, finVisee.bloc), creneaux.bloc, objectif.bloc],
+        () => ({ orga_heures_semaine: heures.champ.value === "" ? null : Number(heures.champ.value), orga_date_fin_visee: finVisee.champ.value || null, orga_creneaux: texte(creneaux), orga_objectif: texte(objectif) }),
+        () => {
+          const n = heures.champ.value === "" ? null : Number(heures.champ.value);
+          return n !== null && (!Number.isInteger(n) || n < 0 || n > 60) ? "Heures par semaine : un nombre entier entre 0 et 60." : null;
+        });
+    } else {
+      organisation = lecture([["Objectif du mois", f.orga_objectif],
+        ["Temps disponible", f.orga_heures_semaine !== null && f.orga_heures_semaine !== undefined ? `${f.orga_heures_semaine} h par semaine` : null],
+        ["Créneaux", f.orga_creneaux], ["Fin visée", f.orga_date_fin_visee ? dateLisible(f.orga_date_fin_visee) : null]]);
+    }
 
-    const heures = champTexte("co-orga-heures", "Heures par semaine", vide(f.orga_heures_semaine), { type: "number", inputmode: "numeric" });
-    heures.champ.min = "0"; heures.champ.max = "60";
-    const creneaux = champTexte("co-orga-creneaux", "Créneaux disponibles", vide(f.orga_creneaux), { placeholder: "Ex. : mardi et jeudi soir" });
-    const objectif = champTexte("co-orga-objectif", "Objectif du mois", vide(f.orga_objectif), { placeholder: "Ex. : terminer les modules 4 et 5" });
-    const finVisee = champTexte("co-orga-fin", "Fin de parcours visée", vide(f.orga_date_fin_visee), { type: "date" });
+    const sousOnglets = barreOnglets("coaching", [
+      ["stage", "Stage", stage],
+      ["examen", "Examen", contenuExamen],
+      ["projet", "Projet", projet],
+      ["organisation", "Organisation", organisation],
+    ], memo.partie, (cle) => { memo.partie = cle; majAdresse(); });
 
-    const partie = (titre, ouvert, ...champs) => {
-      const d = h("details", { class: "depliant partie-coaching" }, h("summary", {}, titre), h("div", { class: "formulaire" }, ...champs));
-      d.open = ouvert;
-      return d;
-    };
-    const bouton = h("button", { class: "bouton", type: "submit" }, "Enregistrer le coaching");
-    const formulaire = h("form", { class: "formulaire", novalidate: true },
-      partie("Stage", Boolean(f.stage_statut && f.stage_statut !== "non_concerne"), stageStatut.bloc, stageStructure.bloc, h("div", { class: "deux-colonnes" }, stageDebut.bloc, stageFin.bloc)),
-      partie("Projet", Boolean(f.projet_metier), metier.bloc, situation.bloc, noteProjet.bloc),
-      partie("Organisation", Boolean(f.orga_objectif), h("div", { class: "deux-colonnes" }, heures.bloc, finVisee.bloc), creneaux.bloc, objectif.bloc),
-      zone, bouton);
-
-    formulaire.addEventListener("submit", async (evenement) => {
-      evenement.preventDefault();
-      const n = heures.champ.value === "" ? null : Number(heures.champ.value);
-      if (n !== null && (!Number.isInteger(n) || n < 0 || n > 60)) return signaler(zone, "erreur", "Heures par semaine : un nombre entier entre 0 et 60.");
-      if (stageDebut.champ.value && stageFin.champ.value && stageFin.champ.value < stageDebut.champ.value) return signaler(zone, "erreur", "La fin du stage est avant son début.");
-      const texte = (c) => c.champ.value.trim() || null;
-      signaler(zone);
-      occupe(bouton, true, "Enregistrement…");
-      const { error } = await sb.from("coaching").upsert({
-        apprenant_id: a.id,
-        organisme_id: a.organisme_id,
-        stage_statut: stageStatut.champ.value,
-        stage_structure: texte(stageStructure),
-        stage_debut: stageDebut.champ.value || null,
-        stage_fin: stageFin.champ.value || null,
-        projet_metier: texte(metier),
-        projet_situation: situation.champ.value || null,
-        projet_note: texte(noteProjet),
-        orga_heures_semaine: n,
-        orga_creneaux: texte(creneaux),
-        orga_objectif: texte(objectif),
-        orga_date_fin_visee: finVisee.champ.value || null,
-      }, { onConflict: "apprenant_id" });
-      occupe(bouton, false);
-      if (error) return signaler(zone, "erreur", texteErreur(error));
-      rafraichir("Coaching enregistré.");
-    });
-
-    return h("section", {},
-      h("div", { class: "section-titre" }, h("h2", {}, "Coaching")),
-      h("div", { class: "carte carte-large" }, formulaire));
+    return sousOnglets;
   }
 
   // ---------------------------------------------------------------------------
