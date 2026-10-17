@@ -38,7 +38,7 @@ app/                              Le site (HTML + JavaScript, sans compilation)
   _headers                        En-têtes de sécurité pour l'hébergeur
 tests/
   00_simulation_supabase.sql      Recrée le minimum de Supabase pour tester en local
-  10_tests_cloisonnement.sql      115 vérifications d'accès et de calcul
+  10_tests_cloisonnement.sql      114 vérifications d'accès et de calcul
   lancer_tests.sh                 Lance tout dans une base jetable
   import.test.js                  17 tests de lecture des fichiers CSV (node tests/import.test.js)
 ```
