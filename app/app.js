@@ -307,7 +307,7 @@
     });
 
     const formulaire = h("form", { novalidate: true },
-      h("label", { for: "champ-code-email" }, "Votre email contient un code à 6 chiffres\u00a0?", h("span", { class: "aide" }, "Saisissez-le ici. Sinon, cliquez simplement sur le lien de l'email."), champ),
+      h("label", { for: "champ-code-email" }, "Code reçu par email", h("span", { class: "aide" }, "Les 6 chiffres de l'email. C'est le plus sûr sur téléphone."), champ),
       zone,
       bouton,
       h("div", { class: "actions-secondaires" }, renvoyer, changer)
@@ -355,7 +355,7 @@
           h("p", { class: "surtitre" }, "Connexion · étape 2 sur 2"),
           h("h1", {}, "Ouvrez votre boîte mail"),
           h("p", { class: "chapo" },
-            `Si l'adresse ${etat.email} a un accès, un email de connexion vient de lui être envoyé. Cliquez sur le lien qu'il contient : vous arriverez directement dans votre espace. Il est valable une heure. Pensez à regarder dans les courriers indésirables.`)
+            `Si l'adresse ${etat.email} a un accès, un email de connexion vient de lui être envoyé. Saisissez le code à 6 chiffres qu'il contient, ou cliquez sur son bouton. Valable une heure, pour une seule connexion. Pensez à regarder dans les courriers indésirables.`)
         ),
         h("div", { class: "carte" }, formulaire),
         h("div", { class: "carte" }, formulaireLien)
