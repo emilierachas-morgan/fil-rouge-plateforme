@@ -2158,7 +2158,7 @@
   // ===========================================================================
 
   function adresseSite() {
-    return /^https?:$/.test(window.location.protocol) ? window.location.origin + window.location.pathname : "https://fil-rouge-apprenants.github.io/";
+    return /^https?:$/.test(window.location.protocol) ? window.location.origin + window.location.pathname : "https://filrouge-apprenant.github.io/";
   }
 
   function messageBienvenue(role, nom) {

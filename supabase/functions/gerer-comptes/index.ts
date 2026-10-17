@@ -20,7 +20,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const ORIGINES_AUTORISEES = [
-  "https://fil-rouge-apprenants.github.io",
+  "https://filrouge-apprenant.github.io",
 ];
 
 function entetes(origine: string | null) {
