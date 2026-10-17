@@ -2158,7 +2158,7 @@
   // ===========================================================================
 
   function adresseSite() {
-    return /^https?:$/.test(window.location.protocol) ? window.location.origin + window.location.pathname : "https://emilierachas-morgan.github.io/fil-rouge-plateforme/";
+    return /^https?:$/.test(window.location.protocol) ? window.location.origin + window.location.pathname : "https://fil-rouge-apprenants.github.io/";
   }
 
   function messageBienvenue(role, nom) {

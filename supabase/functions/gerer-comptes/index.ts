@@ -21,8 +21,6 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const ORIGINES_AUTORISEES = [
   "https://fil-rouge-apprenants.github.io",
-  "https://emilierachas-morgan.github.io",
-  "https://venerable-stardust-5a561d.netlify.app",
 ];
 
 function entetes(origine: string | null) {
